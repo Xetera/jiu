@@ -1,0 +1,17 @@
+[package]
+name = "jiu"
+version = "0.1.1"
+authors = ["Xetera"]
+edition = "2018"
+
+[dependencies]
+reqwest = { version = "0.11.4", features = ["json"] }
+chrono = "0.4"
+async-trait = "0.1.50"
+tokio = { version = "1.8.1",   features = ["full"] }
+serde = { version = "1.0.126", features = ["derive"] }
+serde_json = "1.0.59"
+urlencoding = "2.1.0"
+url = "2.2.2"
+better-panic = "0.2.0"
+async-recursion = "0.3.2"
