@@ -9,26 +9,26 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use url::Url;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct PinterestImage {
     pub width: u16,
     pub height: u16,
     pub url: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct PinterestImages {
     pub id: String,
     pub images: HashMap<String, PinterestImage>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct PinterestResource {
     pub bookmark: Option<String>,
     pub data: Vec<PinterestImages>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct PinterestResponse {
     pub resource_response: PinterestResource,
 }
@@ -90,7 +90,7 @@ impl Provider for PinterestBoardFeed {
             .ok_or(ProviderFailure::UrlError)?;
         Ok(ScrapeUrl(dbg!(url.as_str().to_owned())))
     }
-    async fn step(
+    async fn fetch(
         &self,
         url: &ScrapeUrl,
         step: &ScrapeRequestStep,
@@ -105,12 +105,14 @@ impl Provider for PinterestBoardFeed {
             .json::<PinterestResponse>()
             .await?;
 
+        let date = Utc::now();
         let images = response
             .resource_response
             .data
             .iter()
             .filter_map(|r| {
                 r.images.get("orig").map(|elem| Image {
+                    discovered_at: date,
                     url: elem.url.to_owned(),
                     id: r.id.to_owned(),
                 })
@@ -119,19 +121,12 @@ impl Provider for PinterestBoardFeed {
             .take_while(|r| input.latest_data.iter().all(|im| im.id != r.id))
             .collect::<Vec<Image>>();
 
-        let result = ScrapeResult {
-            date: Utc::now(),
-            images,
-        };
+        let result = ScrapeResult { images };
 
         // we receive a bookmark when there are more images to scrape
         let has_more_images = response.resource_response.bookmark.is_some();
         if has_more_images {
             return Ok(ScrapeStep::Continue(result, response));
-        }
-
-        if step.iteration >= self.max_pagination() {
-            return Ok(ScrapeStep::MaxPagination(result));
         }
 
         Ok(ScrapeStep::Stop(result))

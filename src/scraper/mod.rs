@@ -1,3 +1,3 @@
 mod providers;
-pub use providers::{AllProviders, ScrapeRequestInput, ScrapeResult};
+pub use providers::{PinterestBoardFeed, ScrapeRequestInput, ScrapeResult};
 pub mod scraper;

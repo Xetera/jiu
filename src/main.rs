@@ -2,7 +2,7 @@ mod image;
 mod scraper;
 use tokio;
 
-use crate::scraper::{scraper::scrape, AllProviders, ScrapeRequestInput};
+use crate::scraper::{scraper::scrape, PinterestBoardFeed, ScrapeRequestInput};
 
 #[tokio::main]
 async fn main() {
@@ -17,7 +17,7 @@ async fn main() {
     };
     match scrape(
         "175147941697542476|/tyrajai2003/dream-catcher/",
-        &AllProviders::PinterestBoardFeed,
+        &PinterestBoardFeed {},
         &step,
     )
     .await
