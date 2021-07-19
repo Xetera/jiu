@@ -1,5 +1,6 @@
 mod image;
 mod scraper;
+mod models;
 use tokio;
 
 use crate::scraper::{scraper::scrape, PinterestBoardFeed, ScrapeRequestInput};

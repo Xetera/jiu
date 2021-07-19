@@ -5,7 +5,7 @@ use reqwest::{
 };
 use std::{iter::FromIterator, ops::Add, time::Duration};
 
-use crate::image::Image;
+use crate::models::Image;
 
 use super::ScrapeUrl;
 

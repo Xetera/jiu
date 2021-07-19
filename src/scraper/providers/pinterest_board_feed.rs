@@ -1,8 +1,9 @@
+use crate::models::Image;
+
 use super::{
     scrape_default_headers, Provider, ProviderFailure, ScrapeRequestInput, ScrapeRequestStep,
     ScrapeResult, ScrapeStep, ScrapeUrl,
 };
-use crate::image::Image;
 use async_trait::async_trait;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
