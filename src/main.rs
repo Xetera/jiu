@@ -22,7 +22,10 @@ async fn main() {
     )
     .await
     {
-        Ok(num) => println!("{:?}", num),
+        Ok(result) => {
+            println!("{:?}", result.images.len());
+            // println!("{:?}", result)
+        }
         Err(oops) => println!("{:?}", oops),
     };
     println!("hello world");

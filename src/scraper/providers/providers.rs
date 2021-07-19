@@ -4,12 +4,11 @@ use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Client, Error as ReqwestError,
 };
-use std::{iter::FromIterator, ops::Add};
+use std::{iter::FromIterator, ops::Add, time::Duration};
 
 use crate::image::Image;
 
-#[derive(Debug)]
-pub struct ScrapeUrl(pub String);
+use super::ScrapeUrl;
 
 #[derive(Debug)]
 pub struct ScrapeResult {
@@ -28,8 +27,8 @@ impl Add<ScrapeResult> for ScrapeResult {
 }
 
 #[derive(Debug)]
-pub enum ScrapeStep {
-    Continue((ScrapeResult, ScrapeUrl)),
+pub enum ScrapeStep<T> {
+    Continue(ScrapeResult, T),
     MaxPagination(ScrapeResult),
     Stop(ScrapeResult),
 }
@@ -39,6 +38,8 @@ pub enum ProviderFailure {
     UrlError,
     FetchError(ReqwestError),
 }
+
+unsafe impl Send for ProviderFailure {}
 
 impl From<reqwest::Error> for ProviderFailure {
     fn from(err: reqwest::Error) -> Self {
@@ -73,15 +74,30 @@ pub fn scrape_default_headers() -> HeaderMap {
 
 #[async_trait]
 pub trait Provider {
-    fn from_scrape_id(id: &str) -> Result<ScrapeUrl, ProviderFailure>;
+    type Step: Send;
+    fn name(&self) -> &'static str;
+    /// The maximum number of times a resource can be paginated before exiting.
+    /// This value is ignored if the context has no images aka the resource
+    /// is being scraped for the first time
+    fn max_pagination(&self) -> u16 {
+        5
+    }
+    /// The amount of delay between each pagination request. Initial request is not
+    /// bound by this value
+    fn scrape_delay(&self) -> Duration {
+        Duration::from_secs(2)
+    }
+    fn from_scrape_id(
+        &self,
+        id: &str,
+        previous_result: Option<Self::Step>,
+    ) -> Result<ScrapeUrl, ProviderFailure>;
     async fn step(
+        &self,
         url: &ScrapeUrl,
         step: &ScrapeRequestStep,
         ctx: &ScrapeRequestInput,
-    ) -> Result<ScrapeStep, ProviderFailure>;
-    fn normalize_image_url(url: &str) -> &str {
-        url
-    }
+    ) -> Result<ScrapeStep<Self::Step>, ProviderFailure>;
 }
 
 #[derive(Debug, Hash)]

@@ -1,10 +1,18 @@
+use crate::scraper::providers::ScrapeUrl;
+
+use super::providers::{PinterestBoardFeed, PinterestImage, PinterestResponse};
 use super::providers::{
-    AllProviders, Provider, ProviderFailure, ScrapeRequestInput, ScrapeRequestStep, ScrapeResult,
-    ScrapeStep,
+    Provider, ProviderFailure, ScrapeRequestInput, ScrapeRequestStep, ScrapeResult, ScrapeStep,
 };
-use super::providers::{PinterestBoardFeed, ScrapeUrl};
+use super::AllProviders;
 use async_recursion::async_recursion;
 use reqwest::Client;
+
+fn instance(provider: &AllProviders) -> impl Provider {
+    match provider {
+        AllProviders::PinterestBoardFeed => PinterestBoardFeed {},
+    }
+}
 
 pub async fn scrape(
     scrape_id: &str,
@@ -12,30 +20,44 @@ pub async fn scrape(
     input: &ScrapeRequestInput,
 ) -> Result<ScrapeResult, ProviderFailure> {
     #[async_recursion]
-    async fn go(
+    async fn step_through_provider<'a>(
+        scrape_id: &'a str,
         url: &ScrapeUrl,
-        step: &ScrapeRequestStep,
+        provider_type: &AllProviders,
+        step: &ScrapeRequestStep<'a>,
         input: &ScrapeRequestInput,
     ) -> Result<ScrapeResult, ProviderFailure> {
-        let next = match provider {
-            AllProviders::PinterestBoardFeed => PinterestBoardFeed::step(url, step, input).await?,
-        };
+        let provider = instance(&provider_type);
+        let next = provider.step(url, step, input).await?;
 
         Ok(match next {
-            ScrapeStep::Continue((result, url)) => {
-                let next = go(&url, &step.next(), input).await?;
+            ScrapeStep::Continue(result, response) => {
+                tokio::time::sleep(provider.scrape_delay()).await;
+                let next_url = provider.from_scrape_id(scrape_id, Some(response))?;
+                let next = step_through_provider(
+                    &scrape_id,
+                    &next_url,
+                    provider_type,
+                    &step.next(),
+                    input,
+                )
+                .await?;
                 result + next
             }
             ScrapeStep::Stop(a) => a,
-            ScrapeStep::MaxPagination(a) => a,
+            ScrapeStep::MaxPagination(a) => {
+                println!("Reached max pagination for {:?}", provider.name());
+                a
+            }
         })
     }
-    let url = match provider {
-        AllProviders::PinterestBoardFeed => PinterestBoardFeed::from_scrape_id(&scrape_id)?,
-    };
+
+    let url = instance(provider).from_scrape_id(scrape_id, None)?;
     let client = Client::new();
-    Ok(go(
+    Ok(step_through_provider(
+        scrape_id,
         &url,
+        provider,
         &ScrapeRequestStep {
             iteration: 1,
             client: &client,
