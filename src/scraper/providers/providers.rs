@@ -2,7 +2,6 @@ use super::ScrapeUrl;
 use crate::models::Media;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use mongodb::bson::Bson;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Client, Error as ReqwestError,
@@ -115,10 +114,4 @@ pub trait Provider {
 pub enum Providers {
     #[serde(rename = "pinterest.board_feed")]
     PinterestBoardFeed,
-}
-
-impl Into<Bson> for Providers {
-    fn into(self) -> Bson {
-        Bson::String(serde_json::to_string(&self).unwrap())
-    }
 }
