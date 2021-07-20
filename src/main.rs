@@ -1,38 +1,54 @@
-mod image;
-mod scraper;
+mod db;
 mod models;
-use tokio;
+mod scraper;
 
-use crate::scraper::{scraper::scrape, PinterestBoardFeed, ScrapeRequestInput};
+use crate::{
+    db::{add_media, connect, latest_media_from_provider},
+    scraper::{scraper::scrape, PinterestBoardFeed, Providers, ScrapeRequestInput},
+};
+use config::Config;
+use std::{collections::HashSet, error::Error};
 
-#[tokio::main]
-async fn main() {
-    better_panic::install();
+async fn run(settings: &Config) -> Result<(), Box<dyn Error>> {
+    let val = settings.get::<String>("database_url")?;
+    let db = connect(&val).await?;
+    println!("Connected...");
+
+    let latest = latest_media_from_provider(&db, &Providers::PinterestBoardFeed).await?;
+    println!("{:?}", latest);
+
     let step = ScrapeRequestInput {
-        latest_data: vec![
-        //     Image {
-        //     id: "175147872998493006".to_owned(),
-        //     url: "".to_owned(),
-        // }
-        ],
+        latest_data: latest
+            .iter()
+            .map(|l| l.data.id.clone())
+            .collect::<HashSet<String>>(),
     };
-    match scrape(
+
+    let result = scrape(
         "175147941697542476|/tyrajai2003/dream-catcher/",
         &PinterestBoardFeed {},
         &step,
     )
-    .await
-    {
-        Ok(result) => {
-            println!("{:?}", result.images.len());
-            // println!("{:?}", result)
-        }
-        Err(oops) => println!("{:?}", oops),
-    };
-    println!("hello world");
+    .await?;
+    println!("{:?}", result.images.len());
+    if !result.images.is_empty() {
+        add_media(&db, &Providers::PinterestBoardFeed, result.images).await?;
+    }
+    Ok(())
 }
 
-#[test]
-fn foo_test() {
-    assert_eq!(1, 1);
+#[tokio::main]
+async fn main() {
+    better_panic::install();
+    let mut settings = config::Config::default();
+    settings
+        // Add in `./Settings.toml`
+        .merge(config::File::with_name("env"))
+        .unwrap();
+
+    match run(&mut settings).await {
+        Ok(_) => {}
+        Err(err) => println!("{:?}", err),
+    };
+    println!("Running...");
 }

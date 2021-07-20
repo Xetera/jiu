@@ -1,8 +1,6 @@
-use crate::models::Image;
-
 use super::{
     scrape_default_headers, Provider, ProviderFailure, ScrapeRequestInput, ScrapeRequestStep,
-    ScrapeResult, ScrapeStep, ScrapeUrl,
+    ScrapeResult, ScrapeStep, ScrapeUrl, ScrapedMedia,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -95,7 +93,6 @@ impl Provider for PinterestBoardFeed {
         &self,
         url: &ScrapeUrl,
         step: &ScrapeRequestStep,
-        input: &ScrapeRequestInput,
     ) -> Result<ScrapeStep<PinterestResponse>, ProviderFailure> {
         let response = step
             .client
@@ -112,15 +109,14 @@ impl Provider for PinterestBoardFeed {
             .data
             .iter()
             .filter_map(|r| {
-                r.images.get("orig").map(|elem| Image {
+                // I imagine every image has an "orig" size but we can't know for sure
+                r.images.get("orig").map(|elem| ScrapedMedia {
                     discovered_at: date,
                     url: elem.url.to_owned(),
                     id: r.id.to_owned(),
                 })
             })
-            // this vector ideally only has 5 elements so the nested loop isn't a huge deal
-            .take_while(|r| input.latest_data.iter().all(|im| im.id != r.id))
-            .collect::<Vec<Image>>();
+            .collect::<Vec<ScrapedMedia>>();
 
         let result = ScrapeResult { images };
 

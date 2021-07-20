@@ -1,12 +1,16 @@
-use chrono::{DateTime, Utc};
+use crate::scraper::{Providers, ScrapedMedia};
 use serde::{Deserialize, Serialize};
 
+/// A Media entity builds on top of the data collected by a scraper
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Image {
-    pub discovered_at: DateTime<Utc>,
-    /// Images are represented by the highest available quality
-    pub url: String,
-    pub id: String,
-    // we could technically put width x height in here but we can't guarantee
-    // that we can get this information from all providers
+pub struct Media {
+    /// The provider this image came from
+    pub provider: Providers,
+    pub data: ScrapedMedia,
+}
+
+impl Media {
+    pub fn new(data: ScrapedMedia, provider: Providers) -> Self {
+        Media { data, provider }
+    }
 }
