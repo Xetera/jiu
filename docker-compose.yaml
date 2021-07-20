@@ -1,0 +1,17 @@
+version: "3.5"
+
+volumes:
+  jiu_db:
+
+services: 
+  jiu_timescale:
+    image: timescale/timescaledb:latest-pg13
+    container_name: jiu_timescale
+    volumes:
+      - jiu_db:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: jiu
+    ports:
+      - 5431:5432

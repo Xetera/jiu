@@ -1,16 +1,39 @@
-use crate::scraper::{Providers, ScrapedMedia};
-use serde::{Deserialize, Serialize};
+use chrono::{DateTime, NaiveDateTime, Utc};
 
-/// A Media entity builds on top of the data collected by a scraper
-#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScrapePage {
+    pub provider_resource_id: i32,
+    pub media: Vec<Media>,
+    pub response_code: i32,
+    pub response_delay: i32,
+    pub scraped_at: NaiveDateTime,
+}
+#[derive(Debug, sqlx::FromRow)]
 pub struct Media {
-    /// The provider this image came from
-    pub provider: Providers,
-    pub data: ScrapedMedia,
+    pub id: i32,
+    pub url: String,
+    pub unique_identifier: String,
+    pub posted_at: Option<NaiveDateTime>,
+    pub discovered_at: NaiveDateTime,
 }
 
-impl Media {
-    pub fn new(data: ScrapedMedia, provider: Providers) -> Self {
-        Media { data, provider }
-    }
+#[derive(Debug, sqlx::FromRow)]
+pub struct ProviderResource {
+    pub id: i32,
+    pub destination: String,
+    pub name: String,
+    pub priority: i32,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct ScrapeRequest {
+    pub id: i32,
+    pub scrape_id: i32,
+    pub date: NaiveDateTime,
+    pub page: i32,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct Scrape {
+    pub id: i32,
+    pub provider_resource_id: i32,
 }

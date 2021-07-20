@@ -4,7 +4,7 @@ use super::{
     },
     ScrapedMedia,
 };
-use crate::scraper::providers::ScrapeUrl;
+use crate::{models::Media, scraper::providers::ScrapeUrl};
 use async_recursion::async_recursion;
 use reqwest::Client;
 
@@ -28,7 +28,7 @@ async fn step_through_provider<F: Sync + Provider, 'a>(
             let images = &result
                 .images
                 .into_iter()
-                .take_while(|r| !input.latest_data.contains(&r.id))
+                .take_while(|r| !input.latest_data.contains(&r.unique_identifier))
                 .collect::<Vec<ScrapedMedia>>();
 
             let next_images = ScrapeResult::with_images(images.to_owned());

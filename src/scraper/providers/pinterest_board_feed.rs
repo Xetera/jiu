@@ -111,9 +111,8 @@ impl Provider for PinterestBoardFeed {
             .filter_map(|r| {
                 // I imagine every image has an "orig" size but we can't know for sure
                 r.images.get("orig").map(|elem| ScrapedMedia {
-                    discovered_at: date,
                     url: elem.url.to_owned(),
-                    id: r.id.to_owned(),
+                    unique_identifier: r.id.to_owned(),
                 })
             })
             .collect::<Vec<ScrapedMedia>>();

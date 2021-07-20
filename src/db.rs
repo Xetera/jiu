@@ -1,68 +1,68 @@
-use std::ascii::AsciiExt;
-use std::collections::HashMap;
-use std::error::Error;
-use std::iter::FromIterator;
-use std::time::Duration;
+use std::any::Any;
+use std::env;
 
 use crate::models::Media;
+use crate::models::*;
 use crate::scraper::{Providers, ScrapedMedia};
 use chrono::Utc;
-use futures::TryStreamExt;
+use dotenv::dotenv;
+use futures::{StreamExt, TryStreamExt};
 use serde_json;
+use sqlx::pool::PoolOptions;
+use sqlx::postgres::{PgPoolOptions, PgRow};
+use sqlx::{Error, Pool, Postgres};
 
 const DATABASE_NAME: &'static str = "jiu";
 const MEDIA_COLLECTION_NAME: &'static str = "media";
 const LATEST_IMAGE_CHECK_SIZE: i64 = 5;
 
-pub async fn connect() -> Result<DynamoDbClient, Box<dyn Error>> {
-    // let mut provider = ChainProvider::new();
-    // provider.set_timeout(Duration::from_millis(200));
-
-    // let client = rusoto_dynamodb::DynamoDbClient::new_with(
-    //     HttpClient::new().expect("Couldn't initialize http client"),
-    //     provider,
-    //     Region::EuCentral1,
-    // );
-    // Ok(client)
+pub async fn connect() -> Result<Pool<Postgres>, Error> {
+    dotenv().ok();
+    Ok(PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&env::var("DATABASE_URL").expect("No DATABASE_URL env"))
+        .await?)
 }
 
 // Grab the latest N images from a relevant provider
 pub async fn latest_media_from_provider(
-    db: &DynamoDbClient,
-    provider: &Providers,
-) -> error::Result<Vec<Media>> {
-    // let opts: BatchGetItemInput = Default::default();
-    // let scan: ScanInput = Default::default();
-    // scan.table_name = MEDIA_COLLECTION_NAME.to_owned();
-    // scan.scan_filter = "provider = "
-    // db.scan().table_name();
-    // opts.request_items = HashMap::from_iter([("provider".to_owned(), provider)]);
-    // let result = db.batch_get_item(opts).await?;
-    // let media = db.collection::<Media>(MEDIA_COLLECTION_NAME);
-    // let options = FindOptions::builder()
-    //     .sort(doc! { "data.discovered_at": 1, "_id": 1 })
-    //     .limit(LATEST_IMAGE_CHECK_SIZE)
-    //     .build();
+    db: &Pool<Postgres>,
+    provider_name: &Providers,
+) -> Result<Vec<Media>, sqlx::error::Error> {
+    let out = sqlx::query_as!(Media, "SELECT * FROM media limit 5")
+        .fetch_all(db)
+        .await?;
+    Ok(out)
+    // println!("{:?}", out);
+    // Err(Error::PoolClosed)
+    // Ok(out)
+    // let a = out;
 
     // media
-    //     .find(
-    //         doc! { "provider": bson::to_bson(provider).unwrap() },
-    //         options,
-    //     )
-    //     .await?
-    //     .try_collect::<Vec<Media>>()
-    //     .await
+    //     .inner_join(provider_resource.on())
+    //     .filter(provider_resource_id.eq(provider_name))
+    //     .load::<Media>(db)
 }
 
-// pub async fn add_media(
-//     db: &Database,
-//     provider: &Providers,
-//     images: Vec<ScrapedMedia>,
-// ) -> error::Result<InsertManyResult> {
-//     let media = db.collection::<Media>(MEDIA_COLLECTION_NAME);
-//     let options = InsertManyOptions::default();
-//     let out = images
-//         .into_iter()
-//         .map(|scraped| Media::new(scraped, provider.clone()));
-//     media.insert_many(out, options).await
-// }
+pub async fn add_media(
+    db: &Pool<Postgres>,
+    provider_resource: &ProviderResource,
+    scrape_request: &ScrapeRequest,
+    images: Vec<ScrapedMedia>,
+) -> Result<Scrape, Error> {
+    let mut tx = db.begin().await?;
+    let out = sqlx::query_as!(
+        Scrape,
+        "INSERT INTO scrape (provider_resource_id) VALUES ($1) returning *",
+        provider_resource.id
+    )
+    .fetch_one(&mut tx)
+    .await?;
+    Ok(out)
+    // let media = db.collection::<Media>(MEDIA_COLLECTION_NAME);
+    // let options = InsertManyOptions::default();
+    // let out = images
+    //     .into_iter()
+    //     .map(|scraped| Media::new(scraped, provider.clone()));
+    // media.insert_many(out, options).await
+}

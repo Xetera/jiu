@@ -1,21 +1,15 @@
-mod db;
-mod models;
-mod scraper;
-
-use crate::{
-    db::connect,
-    scraper::{scraper::scrape, PinterestBoardFeed, Providers, ScrapeRequestInput},
+use jiu::{
+    db::{connect, latest_media_from_provider},
+    scraper::Providers,
 };
-use config::Config;
-use std::{collections::HashSet, error::Error};
+use std::error::Error;
 
-async fn run(settings: &Config) -> Result<(), Box<dyn Error>> {
-    let val = settings.get::<String>("database_url")?;
+async fn run() -> Result<(), Box<dyn Error>> {
+    // let val = settings.get::<String>("database_url")?;
     let db = connect().await?;
-    db.batch_get_item(input)
     println!("{:?}", db);
 
-    // let latest = latest_media_from_provider(&db, &Providers::PinterestBoardFeed).await?;
+    latest_media_from_provider(&db, &Providers::PinterestBoardFeed).await?;
     // println!("{:?}", latest);
 
     // let step = ScrapeRequestInput {
@@ -41,13 +35,8 @@ async fn run(settings: &Config) -> Result<(), Box<dyn Error>> {
 #[tokio::main]
 async fn main() {
     better_panic::install();
-    let mut settings = config::Config::default();
-    settings
-        // Add in `./Settings.toml`
-        .merge(config::File::with_name("env"))
-        .unwrap();
 
-    match run(&mut settings).await {
+    match run().await {
         Ok(_) => {}
         Err(err) => println!("{:?}", err),
     };

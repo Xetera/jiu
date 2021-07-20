@@ -1,7 +1,7 @@
 use super::ScrapeUrl;
 use crate::models::Media;
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Client, Error as ReqwestError,
@@ -10,19 +10,20 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{collections::HashSet, fmt, iter::FromIterator, ops::Add, time::Duration};
 use thiserror::Error;
 
+/// Placeholder for images that may contain more metadata in the future?
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScrapedMedia {
-    /// The date the image was scraped
-    pub discovered_at: DateTime<Utc>,
-    /// Images are represented by the highest available quality
     pub url: String,
-    /// An identifier unique to each provider
-    pub id: String,
+    pub unique_identifier: String,
 }
 
 impl From<&Media> for ScrapedMedia {
     fn from(media: &Media) -> Self {
-        media.data.to_owned()
+        Self {
+            url: media.url.to_owned(),
+            // ???
+            unique_identifier: media.url.to_owned(),
+        }
     }
 }
 
@@ -110,7 +111,7 @@ pub trait Provider {
     ) -> Result<ScrapeStep<Self::Step>, ProviderFailure>;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum Providers {
     #[serde(rename = "pinterest.board_feed")]
     PinterestBoardFeed,
