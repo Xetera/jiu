@@ -1,11 +1,13 @@
 use super::{
-    scrape_default_headers, Provider, ProviderFailure, ScrapeRequestInput, ScrapeRequestStep,
-    ScrapeResult, ScrapeStep, ScrapeUrl, ScrapedMedia,
+    scrape_default_headers, with_async_timer, Provider, ProviderFailure, ProviderMedia,
+    ProviderResult, ProviderState, ProviderStep, ScrapeRequestInput, ScrapeUrl,
 };
 use async_trait::async_trait;
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    time::{Instant, SystemTime},
+};
 use url::Url;
 
 #[derive(Debug, Deserialize)]
@@ -46,6 +48,7 @@ struct PinterestRequestDict<'a> {
     options: PinterestRequestDictOptions<'a>,
 }
 
+#[derive(Copy, Clone)]
 pub struct PinterestBoardFeed {}
 
 const PINTEREST_BOARD_SEPARATOR: &str = "|";
@@ -63,8 +66,8 @@ impl Provider for PinterestBoardFeed {
         "Pinterest Board Feed"
     }
     fn from_scrape_id(
-        &self,
-        scrape_id: &str,
+        self,
+        scrape_id: String,
         previous_result: Option<PinterestResponse>,
     ) -> Result<ScrapeUrl, ProviderFailure> {
         let (id, path) = scrape_id
@@ -89,42 +92,58 @@ impl Provider for PinterestBoardFeed {
             .ok_or(ProviderFailure::UrlError)?;
         Ok(ScrapeUrl(dbg!(url.as_str().to_owned())))
     }
-    async fn fetch(
+    async fn unfold(
         &self,
-        url: &ScrapeUrl,
-        step: &ScrapeRequestStep,
-    ) -> Result<ScrapeStep<PinterestResponse>, ProviderFailure> {
-        let response = step
+        identifier: String,
+        state: ProviderState,
+    ) -> Result<Option<(ProviderResult, ProviderState)>, ProviderFailure> {
+        let instant = Instant::now();
+        println!("Scraping pinterest...");
+        let response = state
             .client
-            .get(&url.0)
+            // I'm so sorry
+            .get(&state.url.unwrap().0)
             .headers(scrape_default_headers())
             .send()
-            .await?
-            .json::<PinterestResponse>()
             .await?;
+        // TODO: this needs to be abstracted to avoid copy pasting
+        // but I need to use async closures to do that and idk how 😂
+        let response_time = instant.elapsed();
 
-        let date = Utc::now();
-        let images = response
+        let status = &response.status();
+        let response_json = response.json::<PinterestResponse>().await?;
+
+        let images = response_json
             .resource_response
             .data
             .iter()
             .filter_map(|r| {
                 // I imagine every image has an "orig" size but we can't know for sure
-                r.images.get("orig").map(|elem| ScrapedMedia {
+                r.images.get("orig").map(|elem| ProviderMedia {
                     url: elem.url.to_owned(),
                     unique_identifier: r.id.to_owned(),
                 })
             })
-            .collect::<Vec<ScrapedMedia>>();
+            .collect::<Vec<ProviderMedia>>();
 
-        let result = ScrapeResult { images };
+        let result = ProviderResult {
+            images,
+            response_code: status.to_owned(),
+            response_delay: instant.elapsed(),
+        };
+
+        let bookmark = response_json.resource_response.bookmark.clone();
+        let next_url = self.from_scrape_id(identifier, Some(response_json))?;
+
+        let next_state = ProviderState {
+            client: state.client,
+            url: Some(next_url),
+        };
 
         // we receive a bookmark when there are more images to scrape
-        let has_more_images = response.resource_response.bookmark.is_some();
-        if has_more_images {
-            return Ok(ScrapeStep::Continue(result, response));
-        }
-
-        Ok(ScrapeStep::Stop(result))
+        Ok(match bookmark {
+            Some(_) => Some((result, next_state)),
+            None => Some((result, next_state)),
+        })
     }
 }

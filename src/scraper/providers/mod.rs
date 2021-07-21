@@ -5,5 +5,5 @@ pub use pinterest_board_feed::*;
 pub use providers::*;
 
 /// A scrape url is only transparently available to providers
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ScrapeUrl(String);

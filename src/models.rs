@@ -1,13 +1,14 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 
+use crate::scraper::ProviderResult;
+
 pub struct ScrapePage {
     pub provider_resource_id: i32,
-    pub media: Vec<Media>,
-    pub response_code: i32,
-    pub response_delay: i32,
+    pub result: ProviderResult,
     pub scraped_at: NaiveDateTime,
 }
-#[derive(Debug, sqlx::FromRow)]
+
+#[derive(Debug)]
 pub struct Media {
     pub id: i32,
     pub url: String,
@@ -16,7 +17,7 @@ pub struct Media {
     pub discovered_at: NaiveDateTime,
 }
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug)]
 pub struct ProviderResource {
     pub id: i32,
     pub destination: String,

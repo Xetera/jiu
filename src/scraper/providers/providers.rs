@@ -1,23 +1,29 @@
 use super::ScrapeUrl;
 use crate::models::Media;
 use async_trait::async_trait;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use futures::Future;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
-    Client, Error as ReqwestError,
+    Client, ClientBuilder, Error as ReqwestError, StatusCode,
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::{collections::HashSet, fmt, iter::FromIterator, ops::Add, time::Duration};
+use std::{
+    collections::HashSet,
+    fmt,
+    iter::FromIterator,
+    ops::Add,
+    time::{Duration, Instant},
+};
 use thiserror::Error;
 
 /// Placeholder for images that may contain more metadata in the future?
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScrapedMedia {
+pub struct ProviderMedia {
     pub url: String,
     pub unique_identifier: String,
 }
 
-impl From<&Media> for ScrapedMedia {
+impl From<&Media> for ProviderMedia {
     fn from(media: &Media) -> Self {
         Self {
             url: media.url.to_owned(),
@@ -28,29 +34,31 @@ impl From<&Media> for ScrapedMedia {
 }
 
 #[derive(Debug)]
-pub struct ScrapeResult {
-    pub images: Vec<ScrapedMedia>,
+pub struct ProviderResult {
+    pub images: Vec<ProviderMedia>,
+    pub response_delay: Duration,
+    pub response_code: StatusCode,
 }
 
-impl ScrapeResult {
-    pub fn with_images(images: Vec<ScrapedMedia>) -> Self {
-        ScrapeResult { images }
-    }
-}
+// impl ProviderResult {
+//     pub fn with_images(images: Vec<ScrapedMedia>) -> Self {
+//         ProviderResult { images }
+//     }
+// }
 
-impl Add<ScrapeResult> for ScrapeResult {
-    type Output = ScrapeResult;
-    fn add(self, rhs: ScrapeResult) -> Self::Output {
-        ScrapeResult {
-            images: [self.images, rhs.images].concat(),
-        }
-    }
-}
+// impl Add<ScrapeResult> for ScrapeResult {
+//     type Output = ScrapeResult;
+//     fn add(self, rhs: ScrapeResult) -> Self::Output {
+//         ScrapeResult {
+//             images: [self.images, rhs.images].concat(),
+//         }
+//     }
+// }
 
 #[derive(Debug)]
-pub enum ScrapeStep<T> {
-    Continue(ScrapeResult, T),
-    Stop(ScrapeResult),
+pub enum ProviderStep {
+    Next(ProviderResult),
+    Error(ProviderFailure),
 }
 
 #[derive(Error, Debug)]
@@ -67,8 +75,11 @@ impl From<reqwest::Error> for ProviderFailure {
     }
 }
 
-pub struct ScrapeRequestStep<'a> {
-    pub client: &'a Client,
+#[derive(Clone)]
+pub struct ProviderState {
+    // empty if we're done with pagination
+    pub url: Option<ScrapeUrl>,
+    pub client: Client,
 }
 
 pub struct ScrapeRequestInput {
@@ -80,6 +91,16 @@ pub fn scrape_default_headers() -> HeaderMap {
         HeaderName::from_static("user-agent"),
         HeaderValue::from_static("Jiu Scraper (https://github.com/Xetera/jiu)"),
     )])
+}
+
+pub async fn with_async_timer<T: futures::Future, F>(f: F) -> (Duration, T::Output)
+where
+    F: FnOnce() -> T,
+{
+    todo!("This doesn't work lol");
+    let instant = Instant::now();
+    let out = f().await;
+    (instant.elapsed(), out)
 }
 
 #[async_trait]
@@ -99,16 +120,16 @@ pub trait Provider {
     }
     /// Scrape ids are any unique identifier a provider can try to resolve into an opaque ScrapeUrl
     fn from_scrape_id(
-        &self,
-        id: &str,
+        self,
+        id: String,
         previous_result: Option<Self::Step>,
     ) -> Result<ScrapeUrl, ProviderFailure>;
     /// fetch a single page of the current resource
-    async fn fetch(
+    async fn unfold(
         &self,
-        url: &ScrapeUrl,
-        step: &ScrapeRequestStep,
-    ) -> Result<ScrapeStep<Self::Step>, ProviderFailure>;
+        identifier: String,
+        state: ProviderState,
+    ) -> Result<Option<(ProviderResult, ProviderState)>, ProviderFailure>;
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]

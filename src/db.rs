@@ -3,7 +3,7 @@ use std::env;
 
 use crate::models::Media;
 use crate::models::*;
-use crate::scraper::{Providers, ScrapedMedia};
+use crate::scraper::{ProviderMedia, Providers};
 use chrono::Utc;
 use dotenv::dotenv;
 use futures::{StreamExt, TryStreamExt};
@@ -25,40 +25,41 @@ pub async fn connect() -> Result<Pool<Postgres>, Error> {
 }
 
 // Grab the latest N images from a relevant provider
-pub async fn latest_media_from_provider(
-    db: &Pool<Postgres>,
-    provider_name: &Providers,
-) -> Result<Vec<Media>, sqlx::error::Error> {
-    let out = sqlx::query_as!(Media, "SELECT * FROM media limit 5")
-        .fetch_all(db)
-        .await?;
-    Ok(out)
-    // println!("{:?}", out);
-    // Err(Error::PoolClosed)
-    // Ok(out)
-    // let a = out;
+// pub async fn latest_media_from_provider(
+//     db: &Pool<Postgres>,
+//     provider_name: &Providers,
+// ) -> Result<Vec<Media>, sqlx::error::Error> {
+//     // let out = sqlx::query_as!("SELECT id FROM media limit 5")
+//     //     .fetch_all(db)
+//     //     .await?;
+//     // Ok(out)
+//     // println!("{:?}", out);
+//     // Err(Error::PoolClosed)
+//     // Ok(out)
+//     // let a = out;
 
-    // media
-    //     .inner_join(provider_resource.on())
-    //     .filter(provider_resource_id.eq(provider_name))
-    //     .load::<Media>(db)
-}
+//     // media
+//     //     .inner_join(provider_resource.on())
+//     //     .filter(provider_resource_id.eq(provider_name))
+//     //     .load::<Media>(db)
+// }
 
 pub async fn add_media(
     db: &Pool<Postgres>,
     provider_resource: &ProviderResource,
     scrape_request: &ScrapeRequest,
-    images: Vec<ScrapedMedia>,
+    images: Vec<ProviderMedia>,
 ) -> Result<Scrape, Error> {
-    let mut tx = db.begin().await?;
-    let out = sqlx::query_as!(
-        Scrape,
-        "INSERT INTO scrape (provider_resource_id) VALUES ($1) returning *",
-        provider_resource.id
-    )
-    .fetch_one(&mut tx)
-    .await?;
-    Ok(out)
+    todo!();
+    // let mut tx = db.begin().await?;
+    // let out = sqlx::query_as!(
+    //     Scrape,
+    //     "INSERT INTO scrape (provider_resource_id) VALUES ($1) returning *",
+    //     provider_resource.id
+    // )
+    // .fetch_one(&mut tx)
+    // .await?;
+    // Ok(out)
     // let media = db.collection::<Media>(MEDIA_COLLECTION_NAME);
     // let options = InsertManyOptions::default();
     // let out = images
