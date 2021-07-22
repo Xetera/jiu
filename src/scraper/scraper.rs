@@ -3,12 +3,15 @@ use super::{
     ProviderResult,
 };
 use crate::scraper::ProviderMedia;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use futures::StreamExt;
+use log::info;
 use reqwest::Client;
 
 #[derive(Debug)]
 pub struct Scrape {
+    pub provider_destination: String,
+    pub provider_id: String,
     pub requests: Vec<ScrapeRequest>,
 }
 
@@ -59,19 +62,30 @@ pub async fn scrape<F: Sync + Copy + Provider>(
                 let date = Utc::now();
                 let response_code = page.response_code;
                 let response_delay = page.response_delay;
+                let original_image_count = page.images.len();
                 let images = page
                     .images
                     .into_iter()
                     .take_while(|r| !input.latest_data.contains(&r.unique_identifier))
                     .collect::<Vec<ProviderMedia>>();
+                let new_image_count = images.len();
+                let provider_result = ProviderResult {
+                    images,
+                    response_code,
+                    response_delay,
+                };
                 scrape_requests.push(ScrapeRequest {
                     date,
-                    provider_result: ProviderResult {
-                        images,
-                        response_code,
-                        response_delay,
-                    },
+                    provider_result,
                 });
+                let has_known_image = new_image_count != original_image_count;
+                if has_known_image {
+                    info!(
+                        "'{}' has finished crawling because it reached its last known data",
+                        provider.id()
+                    );
+                    break;
+                }
                 if scrape_requests.len() as u16 > provider.max_pagination() {
                     break;
                 }
@@ -80,6 +94,8 @@ pub async fn scrape<F: Sync + Copy + Provider>(
         }
     }
     Ok(Scrape {
+        provider_destination: scrape_id.to_owned(),
+        provider_id: provider.id().to_owned(),
         requests: scrape_requests,
     })
 }

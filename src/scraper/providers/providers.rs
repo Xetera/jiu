@@ -112,7 +112,7 @@ where
 #[async_trait]
 pub trait Provider {
     type Step;
-    fn name(&self) -> &'static str;
+    fn id(&self) -> &'static str;
     /// The maximum number of times a resource can be paginated before exiting.
     /// This value is ignored if the context has no images aka the resource
     /// is being scraped for the first time
@@ -138,8 +138,8 @@ pub trait Provider {
     ) -> Result<ProviderStep, ProviderFailure>;
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-pub enum Providers {
-    #[serde(rename = "pinterest.board_feed")]
-    PinterestBoardFeed,
-}
+// #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+// pub enum Providers {
+//     #[serde(rename = "pinterest.board_feed")]
+//     PinterestBoardFeed,
+// }

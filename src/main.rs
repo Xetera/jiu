@@ -1,6 +1,6 @@
 use jiu::{
     db::connect,
-    scraper::{scraper::scrape, PinterestBoardFeed, Providers, ScrapeRequestInput},
+    scraper::{scraper::scrape, PinterestBoardFeed, ScrapeRequestInput},
 };
 use std::{collections::HashSet, error::Error};
 
@@ -38,6 +38,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
 #[tokio::main]
 async fn main() {
     better_panic::install();
+    env_logger::init();
 
     match run().await {
         Ok(_) => {}

@@ -1,7 +1,7 @@
 -- This file should undo anything in `up.sql`
 DROP TABLE webhook_invocation;
 
-DROP TABLE webhook_sources;
+DROP TABLE webhook_source;
 
 DROP TABLE scrape_error;
 

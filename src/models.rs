@@ -33,8 +33,8 @@ pub struct ProviderResource {
 //     pub page: i32,
 // }
 
-#[derive(Debug, sqlx::FromRow)]
-pub struct Scrape {
-    pub id: i32,
-    pub provider_resource_id: i32,
-}
+// #[derive(Debug, sqlx::FromRow)]
+// pub struct Scrape {
+//     pub id: i32,
+//     pub provider_resource_id: i32,
+// }

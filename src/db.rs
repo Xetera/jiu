@@ -1,10 +1,12 @@
 use std::any::Any;
+use std::collections::HashSet;
 use std::env;
+use std::iter::FromIterator;
 
 use crate::models::Media;
 use crate::models::*;
-use crate::scraper::scraper::ScrapeRequest;
-use crate::scraper::{ProviderMedia, Providers};
+use crate::scraper::scraper::{Scrape, ScrapeRequest};
+use crate::scraper::{Provider, ProviderMedia};
 use chrono::Utc;
 use dotenv::dotenv;
 use futures::{StreamExt, TryStreamExt};
@@ -25,39 +27,43 @@ pub async fn connect() -> Result<Pool<Postgres>, Error> {
         .await?)
 }
 
-// Grab the latest N images from a relevant provider
-// pub async fn latest_media_from_provider(
-//     db: &Pool<Postgres>,
-//     provider_name: &Providers,
-// ) -> Result<Vec<Media>, sqlx::error::Error> {
-//     // let out = sqlx::query_as!("SELECT id FROM media limit 5")
-//     //     .fetch_all(db)
-//     //     .await?;
-//     // Ok(out)
-//     // println!("{:?}", out);
-//     // Err(Error::PoolClosed)
-//     // Ok(out)
-//     // let a = out;
-
-//     // media
-//     //     .inner_join(provider_resource.on())
-//     //     .filter(provider_resource_id.eq(provider_name))
-//     //     .load::<Media>(db)
-// }
-
-pub async fn add_media(
+// Grab the latest N images from a relevant provider destination
+pub async fn latest_media_ids_from_provider(
     db: &Pool<Postgres>,
-    provider_resource: &ProviderResource,
-    scrape_request: &ScrapeRequest,
-    images: Vec<ProviderMedia>,
-) -> Result<Scrape, Error> {
-    todo!();
-    // let mut tx = db.begin().await?;
-    // let out = sqlx::query_as!(
-    //     Scrape,
-    //     "INSERT INTO scrape (provider_resource_id) VALUES ($1) returning *",
-    //     provider_resource.id
-    // )
+    destination: String,
+) -> Result<HashSet<String>, sqlx::error::Error> {
+    let out = sqlx::query!(
+        "SELECT unique_identifier FROM media WHERE provider_destination = $1 order by discovered_at desc limit 5",
+        destination
+    )
+    .map(|e| e.unique_identifier)
+    .fetch_all(db)
+    .await?;
+    Ok(HashSet::from_iter(out.into_iter()))
+}
+
+pub async fn process_scrape(db: &Pool<Postgres>, scrape: &Scrape) -> Result<Scrape, Error> {
+    let mut tx = db.begin().await?;
+    let out = sqlx::query!(
+        "INSERT INTO scrape (provider_destination) VALUES ($1) returning id",
+        scrape.provider_destination
+    )
+    .fetch_one(&mut tx)
+    .await?;
+    let scrape_id = out.id;
+
+    for request in &scrape.requests {
+        let response_code = request.provider_result.response_code.as_u16();
+        let out = sqlx::query!(
+            "INSERT INTO scrape_request (scrape_id, response_code, response_delay) VALUES ($1, $2, $3) returning *",
+            scrape_id,
+            response_code as u32,
+            // unsafe downcast from u128? I hope the request doesn't take 2 billion miliseconds kekw
+            request.provider_result.response_delay.as_millis() as u32
+        ).fetch_one(&mut tx).await?;
+    }
+    // out.
+    todo!()
     // .fetch_one(&mut tx)
     // .await?;
     // Ok(out)

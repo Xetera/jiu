@@ -62,8 +62,8 @@ const EXPECTED_PAGE_SIZE: usize = 200;
 #[async_trait]
 impl Provider for PinterestBoardFeed {
     type Step = PinterestResponse;
-    fn name(&self) -> &'static str {
-        "Pinterest Board Feed"
+    fn id(&self) -> &'static str {
+        "pinterest.board_feed"
     }
     fn from_scrape_id(
         self,

@@ -1,5 +1,5 @@
 mod providers;
 pub use providers::{
-    PinterestBoardFeed, ProviderMedia, ProviderResult, Providers, ScrapeRequestInput,
+    PinterestBoardFeed, Provider, ProviderMedia, ProviderResult, ScrapeRequestInput,
 };
 pub mod scraper;
