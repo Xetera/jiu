@@ -3,3 +3,4 @@ pub use providers::{
     PinterestBoardFeed, Provider, ProviderMedia, ProviderResult, ScrapeRequestInput,
 };
 pub mod scraper;
+pub use scraper::Scrape;

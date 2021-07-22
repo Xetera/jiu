@@ -1,13 +1,13 @@
 use super::discord::*;
 use crate::{
     models::DatabaseWebhook,
-    scraper::{scraper::Scrape, ProviderMedia},
+    scraper::{ProviderMedia, Scrape},
     webhook::{webhook_type, WebhookDestination},
 };
 use futures::{stream, StreamExt};
 use reqwest::{Client, Response};
 use serde::Serialize;
-use std::{cell::RefCell, cmp::min};
+use std::{cell::RefCell, cmp::min, time::Instant};
 
 pub struct WebhookDispatch {
     pub webhook: DatabaseWebhook,
@@ -17,6 +17,7 @@ pub struct WebhookDispatch {
 pub struct WebhookInteraction {
     url: String,
     response: Result<Response, reqwest::Error>,
+    response_time: std::time::Duration,
 }
 
 #[derive(Debug, Serialize)]
@@ -46,6 +47,7 @@ pub async fn dispatch_webhooks(
     let iter = |webhook: DatabaseWebhook| async {
         let mut output = ref_cell.borrow_mut();
         let builder = client.post(&webhook.destination);
+        let instant = Instant::now();
         let response = match webhook_type(&webhook.destination) {
             WebhookDestination::Custom => {
                 builder
@@ -70,8 +72,13 @@ pub async fn dispatch_webhooks(
                     .await
             }
         };
+        let response_time = instant.elapsed();
         let url = webhook.destination;
-        output.push(WebhookInteraction { url, response });
+        output.push(WebhookInteraction {
+            url,
+            response,
+            response_time,
+        });
     };
 
     stream::iter(dispatch)
