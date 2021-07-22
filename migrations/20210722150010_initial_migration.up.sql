@@ -1,4 +1,4 @@
--- Your SQL goes here
+-- Add up migration script here
 CREATE TABLE IF NOT EXISTS webhook(
   id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   destination TEXT NOT NULL,
