@@ -41,11 +41,14 @@ CREATE TABLE IF NOT EXISTS media(
   provider_destination TEXT REFERENCES provider_resource(destination) ON DELETE SET NULL,
   scrape_request_id INTEGER REFERENCES scrape_request(id) ON DELETE SET NULL,
   -- We are assuming there is only one type of url
-  url TEXT NOT NULL UNIQUE,
+  image_url TEXT NOT NULL UNIQUE,
+  page_url TEXT NULL,
+  reference_url TEXT NULL,
   -- a unique identifier that's specific to the provider
   unique_identifier TEXT NOT NULL,
+  -- where the image is coming from
   -- could be null if the provider doesn't have the information
-  posted_at TIMESTAMP WITHOUT TIME ZONE,
+  posted_at TIMESTAMP WITHOUT TIME ZONE NULL,
   discovered_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
   UNIQUE(unique_identifier, provider_destination)
   -- we don't want to crawl the same data multiple times

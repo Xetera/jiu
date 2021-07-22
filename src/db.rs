@@ -1,23 +1,10 @@
-use std::any::Any;
+use crate::scraper::scraper::Scrape;
+use dotenv::dotenv;
+use sqlx::postgres::PgPoolOptions;
+use sqlx::{Error, Pool, Postgres};
 use std::collections::HashSet;
 use std::env;
 use std::iter::FromIterator;
-
-use crate::models::Media;
-use crate::models::*;
-use crate::scraper::scraper::{Scrape, ScrapeRequest};
-use crate::scraper::{Provider, ProviderMedia};
-use chrono::{NaiveDateTime, Utc};
-use dotenv::dotenv;
-use futures::{StreamExt, TryStreamExt};
-use serde_json;
-use sqlx::pool::PoolOptions;
-use sqlx::postgres::{PgPoolOptions, PgRow};
-use sqlx::{Error, Pool, Postgres};
-
-const DATABASE_NAME: &'static str = "jiu";
-const MEDIA_COLLECTION_NAME: &'static str = "media";
-const LATEST_IMAGE_CHECK_SIZE: i64 = 5;
 
 pub async fn connect() -> Result<Pool<Postgres>, Error> {
     dotenv().ok();
@@ -43,10 +30,11 @@ pub async fn latest_media_ids_from_provider(
 }
 
 pub async fn process_scrape(db: &Pool<Postgres>, scrape: &Scrape) -> Result<(), Error> {
+    let provider_destination = &scrape.provider_destination;
     let mut tx = db.begin().await?;
     let out = sqlx::query!(
         "INSERT INTO scrape (provider_destination) VALUES ($1) returning id",
-        scrape.provider_destination
+        &provider_destination
     )
     .fetch_one(&mut tx)
     .await?;
@@ -54,8 +42,8 @@ pub async fn process_scrape(db: &Pool<Postgres>, scrape: &Scrape) -> Result<(), 
 
     for (i, request) in scrape.requests.iter().enumerate() {
         let response_code = request.provider_result.response_code.as_u16();
-        let out = sqlx::query!(
-            "INSERT INTO scrape_request (scrape_id, response_code, response_delay, scraped_at, page) VALUES ($1, $2, $3, $4, $5) returning *",
+        let scrape_request_row = sqlx::query!(
+            "INSERT INTO scrape_request (scrape_id, response_code, response_delay, scraped_at, page) VALUES ($1, $2, $3, $4, $5) returning id",
             scrape_id,
             response_code as u32,
             // unsafe downcast from u128? I hope the request doesn't take 2 billion miliseconds kekw
@@ -63,6 +51,30 @@ pub async fn process_scrape(db: &Pool<Postgres>, scrape: &Scrape) -> Result<(), 
             request.date.naive_utc(),
             i as u32
         ).fetch_one(&mut tx).await?;
+        for media in request.provider_result.images.iter() {
+            let _media_row = sqlx::query!(
+                "INSERT INTO media (
+                provider_destination,
+                scrape_request_id,
+                image_url,
+                page_url,
+                reference_url,
+                unique_identifier,
+                posted_at,
+                discovered_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING returning *",
+                &provider_destination,
+                scrape_request_row.id,
+                media.image_url,
+                media.page_url,
+                media.reference_url,
+                media.unique_identifier,
+                media.post_date.map(|date| date.naive_utc()),
+                request.date.naive_utc()
+            )
+            .fetch_optional(&mut tx)
+            .await?;
+        }
     }
     tx.commit().await?;
     Ok(())

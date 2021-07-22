@@ -3,12 +3,10 @@ use jiu::{
     scraper::{scraper::scrape, PinterestBoardFeed, ScrapeRequestInput},
 };
 use reqwest::Client;
-use std::{collections::HashSet, error::Error};
+use std::error::Error;
 
 async fn run() -> Result<(), Box<dyn Error>> {
-    // let val = settings.get::<String>("database_url")?;
     let db = connect().await?;
-    println!("{:?}", db);
     let client = Client::new();
 
     let provider_destination = "175147941697542476|/tyrajai2003/dream-catcher/";
@@ -18,12 +16,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let step = ScrapeRequestInput { latest_data };
 
     let result = scrape(provider_destination, &pinterest, &step).await?;
-    println!("{:?}", result.requests.len());
-    // .await?;
-    // println!("{:?}", result.images.len());
-    // if !result.images.is_empty() {
     process_scrape(&db, &result).await?;
-    // }
     Ok(())
 }
 
@@ -34,7 +27,7 @@ async fn main() {
 
     match run().await {
         Ok(_) => {}
-        Err(err) => println!("{:?}", err),
+        Err(err) => eprintln!("{:?}", err),
     };
     println!("Running...");
 }

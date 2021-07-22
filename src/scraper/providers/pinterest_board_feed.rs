@@ -15,10 +15,16 @@ pub struct PinterestImage {
     pub url: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct PinterestRichSummary {
+    pub url: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct PinterestImages {
     pub id: String,
     pub images: HashMap<String, PinterestImage>,
+    pub rich_summary: Option<PinterestRichSummary>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -114,11 +120,16 @@ impl<'a> Provider for PinterestBoardFeed<'a> {
             .resource_response
             .data
             .iter()
-            .filter_map(|r| {
+            .filter_map(|pin| {
                 // I imagine every image has an "orig" size but we can't know for sure
-                r.images.get("orig").map(|elem| ProviderMedia {
-                    url: elem.url.to_owned(),
-                    unique_identifier: r.id.to_owned(),
+                pin.images.get("orig").map(|elem| ProviderMedia {
+                    image_url: elem.url.to_owned(),
+                    page_url: Some(format!("https://www.pinterest.com/pin/{}", elem.url)),
+                    // yes, pinterest literally does not tell you when things were
+                    // pinned. It's so stupid
+                    post_date: None,
+                    reference_url: pin.rich_summary.clone().map(|sum| sum.url),
+                    unique_identifier: pin.id.to_owned(),
                 })
             })
             .collect::<Vec<ProviderMedia>>();

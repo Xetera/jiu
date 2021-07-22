@@ -1,6 +1,6 @@
 use super::ScrapeUrl;
-use crate::models::Media;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use futures::Future;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
@@ -19,18 +19,12 @@ use thiserror::Error;
 /// Placeholder for images that may contain more metadata in the future?
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderMedia {
-    pub url: String,
+    pub image_url: String,
+    pub page_url: Option<String>,
+    pub post_date: Option<DateTime<Utc>>,
+    // where the image is coming from
+    pub reference_url: Option<String>,
     pub unique_identifier: String,
-}
-
-impl From<&Media> for ProviderMedia {
-    fn from(media: &Media) -> Self {
-        Self {
-            url: media.url.to_owned(),
-            // ???
-            unique_identifier: media.url.to_owned(),
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -92,6 +86,8 @@ pub struct ScrapeRequestInput {
 }
 
 pub fn scrape_default_headers() -> HeaderMap {
+    // TODO: change the user agent if the program has been forked to modify
+    // important settings like request speed
     let user_agent: String =
         env::var("USER_AGENT").expect("Missing USER_AGENT environment variable");
     HeaderMap::from_iter([(
