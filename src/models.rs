@@ -25,13 +25,13 @@ pub struct ProviderResource {
     pub priority: i32,
 }
 
-#[derive(Debug, sqlx::FromRow)]
-pub struct ScrapeRequest {
-    pub id: i32,
-    pub scrape_id: i32,
-    pub date: NaiveDateTime,
-    pub page: i32,
-}
+// #[derive(Debug, sqlx::FromRow)]
+// pub struct ScrapeRequest {
+//     pub id: i32,
+//     pub scrape_id: i32,
+//     pub date: NaiveDateTime,
+//     pub page: i32,
+// }
 
 #[derive(Debug, sqlx::FromRow)]
 pub struct Scrape {

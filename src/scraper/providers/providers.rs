@@ -40,25 +40,31 @@ pub struct ProviderResult {
     pub response_code: StatusCode,
 }
 
-// impl ProviderResult {
-//     pub fn with_images(images: Vec<ScrapedMedia>) -> Self {
-//         ProviderResult { images }
-//     }
-// }
+impl ProviderResult {
+    pub fn with_images(&self, images: Vec<ProviderMedia>) -> Self {
+        Self {
+            images,
+            response_code: self.response_code,
+            response_delay: self.response_delay,
+        }
+    }
+}
 
-// impl Add<ScrapeResult> for ScrapeResult {
-//     type Output = ScrapeResult;
-//     fn add(self, rhs: ScrapeResult) -> Self::Output {
-//         ScrapeResult {
-//             images: [self.images, rhs.images].concat(),
-//         }
-//     }
-// }
+impl Add<ProviderResult> for ProviderResult {
+    type Output = ProviderResult;
+    fn add(self, rhs: ProviderResult) -> Self::Output {
+        ProviderResult {
+            response_code: rhs.response_code,
+            response_delay: rhs.response_delay,
+            images: [self.images, rhs.images].concat(),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum ProviderStep {
     Next(ProviderResult),
-    Error(ProviderFailure),
+    End(ProviderResult),
 }
 
 #[derive(Error, Debug)]
@@ -78,7 +84,7 @@ impl From<reqwest::Error> for ProviderFailure {
 #[derive(Clone)]
 pub struct ProviderState {
     // empty if we're done with pagination
-    pub url: Option<ScrapeUrl>,
+    pub url: ScrapeUrl,
     pub client: Client,
 }
 
@@ -105,7 +111,7 @@ where
 
 #[async_trait]
 pub trait Provider {
-    type Step: Send;
+    type Step;
     fn name(&self) -> &'static str;
     /// The maximum number of times a resource can be paginated before exiting.
     /// This value is ignored if the context has no images aka the resource
@@ -129,7 +135,7 @@ pub trait Provider {
         &self,
         identifier: String,
         state: ProviderState,
-    ) -> Result<Option<(ProviderResult, ProviderState)>, ProviderFailure>;
+    ) -> Result<(ProviderStep, ProviderState), ProviderFailure>;
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]

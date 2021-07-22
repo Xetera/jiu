@@ -26,6 +26,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         &step,
     )
     .await?;
+    println!("{:?}", result.requests.len());
     // .await?;
     // println!("{:?}", result.images.len());
     // if !result.images.is_empty() {

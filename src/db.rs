@@ -3,6 +3,7 @@ use std::env;
 
 use crate::models::Media;
 use crate::models::*;
+use crate::scraper::scraper::ScrapeRequest;
 use crate::scraper::{ProviderMedia, Providers};
 use chrono::Utc;
 use dotenv::dotenv;

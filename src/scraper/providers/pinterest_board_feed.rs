@@ -55,7 +55,7 @@ const PINTEREST_BOARD_SEPARATOR: &str = "|";
 
 const URL_ROOT: &str = "https://www.pinterest.com/resource/BoardFeedResource/get";
 
-const EXPECTED_PAGE_SIZE: usize = 100;
+const EXPECTED_PAGE_SIZE: usize = 50;
 
 // PinterestBoard ids are made up of 2 pieces, board_url and board_id formatted in this way
 // "board_id|board_url"
@@ -96,19 +96,16 @@ impl Provider for PinterestBoardFeed {
         &self,
         identifier: String,
         state: ProviderState,
-    ) -> Result<Option<(ProviderResult, ProviderState)>, ProviderFailure> {
+    ) -> Result<(ProviderStep, ProviderState), ProviderFailure> {
         let instant = Instant::now();
         println!("Scraping pinterest...");
         let response = state
             .client
             // I'm so sorry
-            .get(&state.url.unwrap().0)
+            .get(&state.url.0)
             .headers(scrape_default_headers())
             .send()
             .await?;
-        // TODO: this needs to be abstracted to avoid copy pasting
-        // but I need to use async closures to do that and idk how 😂
-        let response_time = instant.elapsed();
 
         let status = &response.status();
         let response_json = response.json::<PinterestResponse>().await?;
@@ -137,13 +134,13 @@ impl Provider for PinterestBoardFeed {
 
         let next_state = ProviderState {
             client: state.client,
-            url: Some(next_url),
+            url: next_url,
         };
 
         // we receive a bookmark when there are more images to scrape
         Ok(match bookmark {
-            Some(_) => Some((result, next_state)),
-            None => Some((result, next_state)),
+            Some(_) => (ProviderStep::Next(result), next_state),
+            None => (ProviderStep::End(result), next_state),
         })
     }
 }
