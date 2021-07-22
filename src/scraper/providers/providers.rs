@@ -9,7 +9,7 @@ use reqwest::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{
     collections::HashSet,
-    fmt,
+    env, fmt,
     iter::FromIterator,
     ops::Add,
     time::{Duration, Instant},
@@ -92,9 +92,11 @@ pub struct ScrapeRequestInput {
 }
 
 pub fn scrape_default_headers() -> HeaderMap {
+    let user_agent: String =
+        env::var("USER_AGENT").expect("Missing USER_AGENT environment variable");
     HeaderMap::from_iter([(
         HeaderName::from_static("user-agent"),
-        HeaderValue::from_static("Jiu Scraper (https://github.com/Xetera/jiu)"),
+        HeaderValue::from_str(&user_agent).unwrap(),
     )])
 }
 
