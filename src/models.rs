@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
 
 #[derive(Debug)]
 pub struct DatabaseWebhook {

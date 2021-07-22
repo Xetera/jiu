@@ -1,19 +1,12 @@
 use super::ScrapeUrl;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use futures::Future;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
-    Client, ClientBuilder, Error as ReqwestError, StatusCode,
+    Error as ReqwestError, StatusCode,
 };
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::{
-    collections::HashSet,
-    env, fmt,
-    iter::FromIterator,
-    ops::Add,
-    time::{Duration, Instant},
-};
+use serde::{Deserialize, Serialize};
+use std::{collections::HashSet, env, iter::FromIterator, ops::Add, time::Duration};
 use thiserror::Error;
 
 /// Placeholder for images that may contain more metadata in the future?

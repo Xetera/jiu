@@ -6,12 +6,13 @@ use crate::{
 };
 use futures::{stream, StreamExt};
 use reqwest::{Client, Response};
-use std::{borrow::Borrow, cell::RefCell, rc::Rc, sync::Arc};
+use std::cell::RefCell;
 
 pub struct WebhookDispatch {
     pub webhook: DatabaseWebhook,
 }
 
+#[derive(Debug)]
 pub struct WebhookInteraction {
     url: String,
     response: Result<Response, reqwest::Error>,

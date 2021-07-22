@@ -29,16 +29,9 @@ pub fn is_discord_webhook_url(url: &str) -> bool {
 pub const DISCORD_IMAGE_DISPLAY_LIMIT: usize = 8;
 
 pub fn discord_payload<'a>(media: &Vec<&ProviderMedia>) -> DiscordPayload<'a> {
-    let size = media.len();
     DiscordPayload {
         username: "Jiu",
         avatar_url: "https://i.imgur.com/GkXttv3.png",
-        // content: format!(
-        //     "{} new image{} discovered",
-        //     size,
-        //     // can't be 0 obviously
-        //     if size > 1 { "s" } else { "" }
-        // ),
         embeds: media
             .iter()
             .map(|embed| DiscordEmbed {
