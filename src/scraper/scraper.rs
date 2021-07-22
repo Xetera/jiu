@@ -40,8 +40,8 @@ pub async fn scrape<F: Sync + Copy + Provider>(
             Some(state) => match provider.unfold(scrape_id.to_owned(), state).await {
                 // we have to indicate an error to the consumer and stop iteration on the next cycle
                 Err(err) => Some((ScraperStep::Error(err), None)),
-                Ok((ProviderStep::End(result), next)) => Some((ScraperStep::Data(result), None)),
-                Ok((ProviderStep::Next(result), next)) => {
+                Ok(ProviderStep::End(result)) => Some((ScraperStep::Data(result), None)),
+                Ok(ProviderStep::Next(result, next)) => {
                     Some((ScraperStep::Data(result), Some(next)))
                 }
             },

@@ -63,7 +63,7 @@ impl Add<ProviderResult> for ProviderResult {
 
 #[derive(Debug)]
 pub enum ProviderStep {
-    Next(ProviderResult),
+    Next(ProviderResult, ProviderState),
     End(ProviderResult),
 }
 
@@ -81,7 +81,7 @@ impl From<reqwest::Error> for ProviderFailure {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ProviderState {
     // empty if we're done with pagination
     pub url: ScrapeUrl,
@@ -135,7 +135,7 @@ pub trait Provider {
         &self,
         identifier: String,
         state: ProviderState,
-    ) -> Result<(ProviderStep, ProviderState), ProviderFailure>;
+    ) -> Result<ProviderStep, ProviderFailure>;
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]

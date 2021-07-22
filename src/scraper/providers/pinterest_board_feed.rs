@@ -55,7 +55,7 @@ const PINTEREST_BOARD_SEPARATOR: &str = "|";
 
 const URL_ROOT: &str = "https://www.pinterest.com/resource/BoardFeedResource/get";
 
-const EXPECTED_PAGE_SIZE: usize = 50;
+const EXPECTED_PAGE_SIZE: usize = 200;
 
 // PinterestBoard ids are made up of 2 pieces, board_url and board_id formatted in this way
 // "board_id|board_url"
@@ -96,7 +96,7 @@ impl Provider for PinterestBoardFeed {
         &self,
         identifier: String,
         state: ProviderState,
-    ) -> Result<(ProviderStep, ProviderState), ProviderFailure> {
+    ) -> Result<ProviderStep, ProviderFailure> {
         let instant = Instant::now();
         println!("Scraping pinterest...");
         let response = state
@@ -139,8 +139,8 @@ impl Provider for PinterestBoardFeed {
 
         // we receive a bookmark when there are more images to scrape
         Ok(match bookmark {
-            Some(_) => (ProviderStep::Next(result), next_state),
-            None => (ProviderStep::End(result), next_state),
+            Some(_) => ProviderStep::Next(result, next_state),
+            None => ProviderStep::End(result),
         })
     }
 }
