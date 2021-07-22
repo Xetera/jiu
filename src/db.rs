@@ -20,7 +20,7 @@ pub async fn latest_media_ids_from_provider(
     destination: &str,
 ) -> Result<HashSet<String>, sqlx::error::Error> {
     let out = sqlx::query!(
-        "SELECT unique_identifier FROM media WHERE provider_destination = $1 order by discovered_at desc limit 5",
+        "SELECT unique_identifier FROM media WHERE provider_destination = $1 order by discovered_at desc limit 10",
         destination
     )
     .map(|e| e.unique_identifier)
@@ -78,15 +78,4 @@ pub async fn process_scrape(db: &Pool<Postgres>, scrape: &Scrape) -> Result<(), 
     }
     tx.commit().await?;
     Ok(())
-    // out.
-    // todo!()
-    // .fetch_one(&mut tx)
-    // .await?;
-    // Ok(out)
-    // let media = db.collection::<Media>(MEDIA_COLLECTION_NAME);
-    // let options = InsertManyOptions::default();
-    // let out = images
-    //     .into_iter()
-    //     .map(|scraped| Media::new(scraped, provider.clone()));
-    // media.insert_many(out, options).await
 }
