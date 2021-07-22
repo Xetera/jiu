@@ -7,7 +7,7 @@ use crate::models::Media;
 use crate::models::*;
 use crate::scraper::scraper::{Scrape, ScrapeRequest};
 use crate::scraper::{Provider, ProviderMedia};
-use chrono::Utc;
+use chrono::{NaiveDateTime, Utc};
 use dotenv::dotenv;
 use futures::{StreamExt, TryStreamExt};
 use serde_json;
@@ -30,7 +30,7 @@ pub async fn connect() -> Result<Pool<Postgres>, Error> {
 // Grab the latest N images from a relevant provider destination
 pub async fn latest_media_ids_from_provider(
     db: &Pool<Postgres>,
-    destination: String,
+    destination: &str,
 ) -> Result<HashSet<String>, sqlx::error::Error> {
     let out = sqlx::query!(
         "SELECT unique_identifier FROM media WHERE provider_destination = $1 order by discovered_at desc limit 5",
@@ -42,7 +42,7 @@ pub async fn latest_media_ids_from_provider(
     Ok(HashSet::from_iter(out.into_iter()))
 }
 
-pub async fn process_scrape(db: &Pool<Postgres>, scrape: &Scrape) -> Result<Scrape, Error> {
+pub async fn process_scrape(db: &Pool<Postgres>, scrape: &Scrape) -> Result<(), Error> {
     let mut tx = db.begin().await?;
     let out = sqlx::query!(
         "INSERT INTO scrape (provider_destination) VALUES ($1) returning id",
@@ -52,18 +52,22 @@ pub async fn process_scrape(db: &Pool<Postgres>, scrape: &Scrape) -> Result<Scra
     .await?;
     let scrape_id = out.id;
 
-    for request in &scrape.requests {
+    for (i, request) in scrape.requests.iter().enumerate() {
         let response_code = request.provider_result.response_code.as_u16();
         let out = sqlx::query!(
-            "INSERT INTO scrape_request (scrape_id, response_code, response_delay) VALUES ($1, $2, $3) returning *",
+            "INSERT INTO scrape_request (scrape_id, response_code, response_delay, scraped_at, page) VALUES ($1, $2, $3, $4, $5) returning *",
             scrape_id,
             response_code as u32,
             // unsafe downcast from u128? I hope the request doesn't take 2 billion miliseconds kekw
-            request.provider_result.response_delay.as_millis() as u32
+            request.provider_result.response_delay.as_millis() as u32,
+            request.date.naive_utc(),
+            i as u32
         ).fetch_one(&mut tx).await?;
     }
+    tx.commit().await?;
+    Ok(())
     // out.
-    todo!()
+    // todo!()
     // .fetch_one(&mut tx)
     // .await?;
     // Ok(out)

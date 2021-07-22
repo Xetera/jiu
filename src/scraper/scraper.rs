@@ -32,11 +32,8 @@ pub async fn scrape<F: Sync + Copy + Provider>(
     input: &ScrapeRequestInput,
 ) -> Result<Scrape, ProviderFailure> {
     println!("Running");
-    let url = provider.from_scrape_id(scrape_id.to_owned(), None)?;
-    let seed = ProviderState {
-        client: Client::new(),
-        url,
-    };
+    let url = provider.from_provider_destination(scrape_id.to_owned(), None)?;
+    let seed = ProviderState { url };
     let mut steps = futures::stream::unfold(Some(seed), |state| async {
         match state {
             None => None,

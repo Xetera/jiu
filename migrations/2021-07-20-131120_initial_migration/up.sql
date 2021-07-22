@@ -27,7 +27,6 @@ CREATE TABLE IF NOT EXISTS scrape(
 CREATE TABLE IF NOT EXISTS scrape_request(
   id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   scrape_id INTEGER REFERENCES scrape(id),
-  date TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
   page INTEGER NOT NULL DEFAULT 1,
   response_code INTEGER,
   -- how long did the response take in ms

@@ -85,7 +85,6 @@ impl From<reqwest::Error> for ProviderFailure {
 pub struct ProviderState {
     // empty if we're done with pagination
     pub url: ScrapeUrl,
-    pub client: Client,
 }
 
 pub struct ScrapeRequestInput {
@@ -97,16 +96,6 @@ pub fn scrape_default_headers() -> HeaderMap {
         HeaderName::from_static("user-agent"),
         HeaderValue::from_static("Jiu Scraper (https://github.com/Xetera/jiu)"),
     )])
-}
-
-pub async fn with_async_timer<T: futures::Future, F>(f: F) -> (Duration, T::Output)
-where
-    F: FnOnce() -> T,
-{
-    todo!("This doesn't work lol");
-    let instant = Instant::now();
-    let out = f().await;
-    (instant.elapsed(), out)
 }
 
 #[async_trait]
@@ -124,22 +113,16 @@ pub trait Provider {
     fn scrape_delay(&self) -> Duration {
         Duration::from_secs(2)
     }
-    /// Scrape ids are any unique identifier a provider can try to resolve into an opaque ScrapeUrl
-    fn from_scrape_id(
+    /// Provider destination are any unique identifier a provider can try to resolve into an opaque ScrapeUrl
+    fn from_provider_destination(
         self,
         id: String,
         previous_result: Option<Self::Step>,
     ) -> Result<ScrapeUrl, ProviderFailure>;
-    /// fetch a single page of the current resource
+    /// Process a single iteration of the resource
     async fn unfold(
         &self,
         identifier: String,
         state: ProviderState,
     ) -> Result<ProviderStep, ProviderFailure>;
 }
-
-// #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-// pub enum Providers {
-//     #[serde(rename = "pinterest.board_feed")]
-//     PinterestBoardFeed,
-// }

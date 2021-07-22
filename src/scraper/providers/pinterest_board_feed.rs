@@ -1,13 +1,11 @@
 use super::{
-    scrape_default_headers, with_async_timer, Provider, ProviderFailure, ProviderMedia,
-    ProviderResult, ProviderState, ProviderStep, ScrapeRequestInput, ScrapeUrl,
+    scrape_default_headers, Provider, ProviderFailure, ProviderMedia, ProviderResult,
+    ProviderState, ProviderStep, ScrapeUrl,
 };
 use async_trait::async_trait;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    time::{Instant, SystemTime},
-};
+use std::{collections::HashMap, time::Instant};
 use url::Url;
 
 #[derive(Debug, Deserialize)]
@@ -49,7 +47,9 @@ struct PinterestRequestDict<'a> {
 }
 
 #[derive(Copy, Clone)]
-pub struct PinterestBoardFeed {}
+pub struct PinterestBoardFeed<'a> {
+    pub client: &'a Client,
+}
 
 const PINTEREST_BOARD_SEPARATOR: &str = "|";
 
@@ -60,12 +60,12 @@ const EXPECTED_PAGE_SIZE: usize = 200;
 // PinterestBoard ids are made up of 2 pieces, board_url and board_id formatted in this way
 // "board_id|board_url"
 #[async_trait]
-impl Provider for PinterestBoardFeed {
+impl<'a> Provider for PinterestBoardFeed<'a> {
     type Step = PinterestResponse;
     fn id(&self) -> &'static str {
         "pinterest.board_feed"
     }
-    fn from_scrape_id(
+    fn from_provider_destination(
         self,
         scrape_id: String,
         previous_result: Option<PinterestResponse>,
@@ -99,7 +99,7 @@ impl Provider for PinterestBoardFeed {
     ) -> Result<ProviderStep, ProviderFailure> {
         let instant = Instant::now();
         println!("Scraping pinterest...");
-        let response = state
+        let response = self
             .client
             // I'm so sorry
             .get(&state.url.0)
@@ -130,16 +130,13 @@ impl Provider for PinterestBoardFeed {
         };
 
         let bookmark = response_json.resource_response.bookmark.clone();
-        let next_url = self.from_scrape_id(identifier, Some(response_json))?;
-
-        let next_state = ProviderState {
-            client: state.client,
-            url: next_url,
-        };
-
         // we receive a bookmark when there are more images to scrape
         Ok(match bookmark {
-            Some(_) => ProviderStep::Next(result, next_state),
+            Some(_) => {
+                let next_url = self.from_provider_destination(identifier, Some(response_json))?;
+                let next_state = ProviderState { url: next_url };
+                ProviderStep::Next(result, next_state)
+            }
             None => ProviderStep::End(result),
         })
     }
