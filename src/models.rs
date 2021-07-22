@@ -1,9 +1,17 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 
 #[derive(Debug)]
-pub struct ProviderResource {
+pub struct DatabaseWebhook {
     pub id: i32,
     pub destination: String,
-    pub name: String,
-    pub priority: i32,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug)]
+pub struct DatabaseWebhookSource {
+    pub id: i32,
+    pub webhook_id: i32,
+    pub provider_destination: String,
 }

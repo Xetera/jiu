@@ -5,7 +5,7 @@ authors = ["Xetera"]
 edition = "2018"
 
 [dependencies]
-reqwest = { version = "0.11.4", features = ["json"] }
+reqwest = { version = "0.11.4", features = ["json", "multipart"] }
 chrono = { version= "0.4", features = ["serde"]}
 async-trait = "0.1.50"
 tokio = { version = "1.8.1",   features = ["full"] }
@@ -15,7 +15,7 @@ url = "2.2.2"
 better-panic = "0.2.0"
 futures = "0.3.15"
 thiserror = "1.0.26"
-sqlx = { version = "0.5.5", features = ["runtime-tokio-rustls", "postgres", "chrono", "offline"] }
+sqlx = { version = "0.5.5", features = ["runtime-tokio-rustls", "postgres", "chrono", "offline", "json"] }
 dotenv = "0.15.0"
 log = "0.4.0"
 env_logger = "0.8.4"

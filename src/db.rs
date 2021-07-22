@@ -1,3 +1,4 @@
+use crate::models::DatabaseWebhook;
 use crate::scraper::scraper::Scrape;
 use dotenv::dotenv;
 use sqlx::postgres::PgPoolOptions;
@@ -27,6 +28,21 @@ pub async fn latest_media_ids_from_provider(
     .fetch_all(db)
     .await?;
     Ok(HashSet::from_iter(out.into_iter()))
+}
+
+pub async fn webhooks_for_provider(
+    db: &Pool<Postgres>,
+    destination: &str,
+) -> Result<Vec<DatabaseWebhook>, sqlx::error::Error> {
+    sqlx::query_as!(
+        DatabaseWebhook,
+        "SELECT webhook.* FROM webhook
+        JOIN webhook_source on webhook_source.webhook_id = webhook.id
+        WHERE webhook_source.provider_destination = $1",
+        destination
+    )
+    .fetch_all(db)
+    .await
 }
 
 pub async fn process_scrape(db: &Pool<Postgres>, scrape: &Scrape) -> Result<(), Error> {
