@@ -3,10 +3,9 @@ use super::{
     ProviderResult,
 };
 use crate::scraper::ProviderMedia;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use log::info;
-use reqwest::Client;
 
 #[derive(Debug)]
 pub struct Scrape {

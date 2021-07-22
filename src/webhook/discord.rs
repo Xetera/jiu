@@ -1,6 +1,6 @@
-use serde::Serialize;
-
 use crate::scraper::ProviderMedia;
+use serde::Serialize;
+use std::iter::Iterator;
 
 #[derive(Debug, Serialize)]
 pub struct DiscordImage {
@@ -28,7 +28,7 @@ pub fn is_discord_webhook_url(url: &str) -> bool {
 
 pub const DISCORD_IMAGE_DISPLAY_LIMIT: usize = 8;
 
-pub fn discord_payload<'a>(media: &Vec<&ProviderMedia>) -> DiscordPayload<'a> {
+pub fn discord_payload<'a>(media: Vec<&ProviderMedia>) -> DiscordPayload<'a> {
     DiscordPayload {
         username: "Jiu",
         avatar_url: "https://i.imgur.com/GkXttv3.png",
