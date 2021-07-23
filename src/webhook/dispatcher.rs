@@ -70,8 +70,8 @@ pub async fn dispatch_webhooks(
                 let body = discord_payload(discord_media.to_vec());
                 println!("{:?}", body);
                 builder
-                    .header("content-type", "multipart/form-data")
-                    .form(&body)
+                    // .header("content-type", "multipart/form-data")
+                    .json(&body)
                     .send()
                     .await
             }

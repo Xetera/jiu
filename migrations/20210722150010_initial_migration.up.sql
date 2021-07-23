@@ -59,8 +59,7 @@ CREATE TABLE IF NOT EXISTS scrape_error(
   -- already declared in scrape_request
   -- response_code INTEGER,
   response_body TEXT NOT NULL DEFAULT '',
-  -- this could be null if the scraper error is deserialization related
-  response_code TEXT NULL,
+  response_code TEXT NOT NULL,
   scrape_id INTEGER NOT NULL REFERENCES scrape(id)
 );
 

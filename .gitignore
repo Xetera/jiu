@@ -3,3 +3,4 @@
 **/*.rs.bk
 .vscode
 env.toml
+seed.sql
