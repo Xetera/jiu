@@ -1,5 +1,9 @@
+use std::env;
+use std::iter::FromIterator;
+
 use log::error;
 use reqwest;
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::{Response, StatusCode};
 use serde::de::DeserializeOwned;
 use thiserror::Error;
@@ -44,4 +48,15 @@ pub async fn parse_successful_response<T: DeserializeOwned>(
             code: response_code,
         })
     })
+}
+
+pub fn request_default_headers() -> HeaderMap {
+    // TODO: change the user agent if the program has been forked to modify
+    // important settings like request speed
+    let user_agent: String =
+        env::var("USER_AGENT").expect("Missing USER_AGENT environment variable");
+    HeaderMap::from_iter([(
+        HeaderName::from_static("user-agent"),
+        HeaderValue::from_str(&user_agent).unwrap(),
+    )])
 }

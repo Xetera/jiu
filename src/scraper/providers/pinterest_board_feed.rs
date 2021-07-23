@@ -1,8 +1,8 @@
-use crate::request::parse_successful_response;
+use crate::request::{parse_successful_response, request_default_headers};
 
 use super::{
-    scrape_default_headers, Provider, ProviderFailure, ProviderMedia, ProviderResult,
-    ProviderState, ProviderStep, ScrapeUrl,
+    Provider, ProviderFailure, ProviderMedia, ProviderResult, ProviderState, ProviderStep,
+    ScrapeUrl,
 };
 use async_trait::async_trait;
 use reqwest::Client;
@@ -98,7 +98,7 @@ impl<'a> Provider for PinterestBoardFeed<'a> {
         let url = Url::parse_with_params(URL_ROOT, &[("source_url", path), ("data", &data_str)])
             .ok()
             .ok_or(ProviderFailure::Url)?;
-        Ok(ScrapeUrl(dbg!(url.as_str().to_owned())))
+        Ok(ScrapeUrl(url.as_str().to_owned()))
     }
     async fn unfold(
         &self,
@@ -111,7 +111,7 @@ impl<'a> Provider for PinterestBoardFeed<'a> {
             .client
             // I'm so sorry
             .get(&state.url.0)
-            .headers(scrape_default_headers())
+            .headers(request_default_headers())
             .send()
             .await?;
 

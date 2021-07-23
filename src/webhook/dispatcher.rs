@@ -1,7 +1,7 @@
 use super::discord::*;
 use crate::{
     models::DatabaseWebhook,
-    request::HttpError,
+    request::{request_default_headers, HttpError},
     scraper::{scraper::ScraperStep, ProviderMedia, Scrape},
     webhook::{webhook_type, WebhookDestination},
 };
@@ -9,7 +9,7 @@ use futures::{stream, StreamExt};
 use log::error;
 use reqwest::{Client, Response};
 use serde::Serialize;
-use std::{cell::RefCell, cmp::min, time::Instant};
+use std::{cmp::min, sync::RwLock, time::Instant};
 
 pub struct WebhookDispatch {
     pub webhook: DatabaseWebhook,
@@ -32,8 +32,8 @@ pub struct WebhookPayload<'a> {
 
 const WEBHOOK_DISPATCH_CONCURRENCY_LIMIT: usize = 8;
 
-pub async fn dispatch_webhooks(
-    scrape: &Scrape,
+pub async fn dispatch_webhooks<'a>(
+    scrape: &Scrape<'a>,
     dispatch: Vec<DatabaseWebhook>,
 ) -> Vec<WebhookInteraction> {
     let client = &Client::new();
@@ -49,16 +49,17 @@ pub async fn dispatch_webhooks(
         .flat_map(|result| &result.images)
         .collect::<Vec<&ProviderMedia>>();
     let discord_media = &media[0..min(media.len(), DISCORD_IMAGE_DISPLAY_LIMIT)];
-    let ref_cell = RefCell::new(&mut results);
+    let ref_cell = RwLock::new(&mut results);
     let iter = |webhook: DatabaseWebhook| async {
-        let mut output = ref_cell.borrow_mut();
-        let builder = client.post(&webhook.destination);
+        let builder = client
+            .post(&webhook.destination)
+            .headers(request_default_headers());
         let instant = Instant::now();
         let response = match webhook_type(&webhook.destination) {
             WebhookDestination::Custom => {
                 builder
                     .json(&WebhookPayload {
-                        provider_type: scrape.provider_id.clone(),
+                        provider_type: scrape.provider.name.clone(),
                         media: &media,
                         metadata: webhook.metadata.clone(),
                     })
@@ -68,10 +69,10 @@ pub async fn dispatch_webhooks(
             // TODO: we should split discord webhooks into a separate stream and rate-limit it harder
             // to make sure the running ip doesn't get donked by discord
             WebhookDestination::Discord => {
-                let body = dbg!(discord_payload(discord_media.to_vec()));
+                let body = discord_payload(discord_media.to_vec());
                 match add_wait_parameter(&webhook.destination) {
                     Ok(url) => client
-                        .post(dbg!(url.as_str()))
+                        .post(url.as_str())
                         .json(&body)
                         .send()
                         .await
@@ -85,7 +86,7 @@ pub async fn dispatch_webhooks(
         }
         .map_err(|err| HttpError::ReqwestError(err));
         let response_time = instant.elapsed();
-        output.push(WebhookInteraction {
+        ref_cell.write().unwrap().push(WebhookInteraction {
             webhook,
             response,
             response_time,

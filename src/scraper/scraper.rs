@@ -1,6 +1,6 @@
 use super::{
     providers::{Provider, ProviderFailure, ProviderState, ProviderStep, ScrapeRequestInput},
-    ProviderResult,
+    ProviderResult, ScopedProvider,
 };
 use crate::scraper::ProviderMedia;
 use chrono::{DateTime, Utc};
@@ -8,9 +8,8 @@ use futures::StreamExt;
 use log::info;
 
 #[derive(Debug)]
-pub struct Scrape {
-    pub provider_destination: String,
-    pub provider_id: String,
+pub struct Scrape<'a> {
+    pub provider: &'a ScopedProvider,
     pub requests: Vec<ScrapeRequest>,
 }
 
@@ -33,18 +32,18 @@ pub enum ScraperStep {
     Error(ProviderFailure),
 }
 
-pub async fn scrape<F: Sync + Copy + Provider>(
-    scrape_id: &str,
+pub async fn scrape<'a, F: Sync + Copy + Provider>(
+    sp: &'a ScopedProvider,
     provider: &F,
     input: &ScrapeRequestInput,
-) -> Result<Scrape, ProviderFailure> {
+) -> Result<Scrape<'a>, ProviderFailure> {
     println!("Running");
-    let url = provider.from_provider_destination(scrape_id.to_owned(), None)?;
+    let url = provider.from_provider_destination(sp.destination.clone(), None)?;
     let seed = ProviderState { url };
     let mut steps = futures::stream::unfold(Some(seed), |state| async {
         match state {
             None => None,
-            Some(state) => Some(match provider.unfold(scrape_id.to_owned(), state).await {
+            Some(state) => Some(match provider.unfold(sp.destination.clone(), state).await {
                 // we have to indicate an error to the consumer and stop iteration on the next cycle
                 Err(err) => (InternalScraperStep::Error(err), None),
                 Ok(ProviderStep::End(result)) => (InternalScraperStep::Data(result), None),
@@ -101,8 +100,7 @@ pub async fn scrape<F: Sync + Copy + Provider>(
         }
     }
     Ok(Scrape {
-        provider_destination: scrape_id.to_owned(),
-        provider_id: provider.id().to_owned(),
+        provider: sp.to_owned(),
         requests: scrape_requests,
     })
 }

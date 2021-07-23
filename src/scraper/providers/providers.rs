@@ -4,12 +4,9 @@ use super::ScrapeUrl;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use log::error;
-use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
-    Error as ReqwestError, Response, StatusCode,
-};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::{collections::HashSet, env, iter::FromIterator, ops::Add, time::Duration};
+use reqwest::StatusCode;
+use serde::{Deserialize, Serialize};
+use std::{collections::HashSet, ops::Add, time::Duration};
 use thiserror::Error;
 
 /// Placeholder for images that may contain more metadata in the future?
@@ -79,17 +76,6 @@ pub struct ProviderState {
 
 pub struct ScrapeRequestInput {
     pub latest_data: HashSet<String>,
-}
-
-pub fn scrape_default_headers() -> HeaderMap {
-    // TODO: change the user agent if the program has been forked to modify
-    // important settings like request speed
-    let user_agent: String =
-        env::var("USER_AGENT").expect("Missing USER_AGENT environment variable");
-    HeaderMap::from_iter([(
-        HeaderName::from_static("user-agent"),
-        HeaderValue::from_str(&user_agent).unwrap(),
-    )])
 }
 
 impl From<HttpError> for ProviderFailure {

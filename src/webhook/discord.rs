@@ -17,7 +17,7 @@ pub struct DiscordEmbed {
 pub struct DiscordPayload<'a> {
     pub username: &'a str,
     pub avatar_url: &'a str,
-    pub file: Vec<DiscordEmbed>,
+    pub content: String, // Vec<DiscordEmbed>,
 }
 
 pub fn is_discord_webhook_url(url: &str) -> bool {
@@ -31,16 +31,15 @@ pub fn add_wait_parameter(url: &str) -> Result<Url, url::ParseError> {
 pub const DISCORD_IMAGE_DISPLAY_LIMIT: usize = 8;
 
 pub fn discord_payload<'a>(media: Vec<&ProviderMedia>) -> DiscordPayload<'a> {
+    let media_links = media
+        .iter()
+        .map(|embed| embed.image_url.clone())
+        .collect::<Vec<String>>()
+        .join("\n");
     DiscordPayload {
         username: "Jiu",
         avatar_url: "https://i.imgur.com/GkXttv3.png",
-        file: media
-            .iter()
-            .map(|embed| DiscordEmbed {
-                image: DiscordImage {
-                    url: embed.image_url.clone(),
-                },
-            })
-            .collect(),
+        // content: format!(""),
+        content: format!("{}", media_links),
     }
 }

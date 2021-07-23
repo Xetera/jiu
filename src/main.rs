@@ -1,32 +1,52 @@
+use futures::{stream, StreamExt};
 use jiu::{
     db::{
         connect, latest_media_ids_from_provider, pending_scrapes, process_scrape,
         submit_webhook_responses, webhooks_for_provider,
     },
-    scraper::{scraper::scrape, PinterestBoardFeed, Provider, ScrapeRequestInput},
+    scraper::{scraper::scrape, PinterestBoardFeed, ScopedProvider, ScrapeRequestInput},
     webhook::dispatcher::dispatch_webhooks,
 };
 use reqwest::Client;
+use sqlx::{Pool, Postgres};
 use std::error::Error;
+
+const PROVIDER_PROCESSING_LIMIT: usize = 8;
+
+struct Context {
+    db: Pool<Postgres>,
+    client: reqwest::Client,
+}
+
+async fn iter(ctx: &Context, sp: ScopedProvider) -> Result<(), Box<dyn Error>> {
+    let pinterest = PinterestBoardFeed {
+        client: &ctx.client,
+    };
+    let latest_data = dbg!(latest_media_ids_from_provider(&ctx.db, &sp).await?);
+
+    let step = ScrapeRequestInput { latest_data };
+    let result = scrape(&sp, &pinterest, &step).await?;
+    let processed_scrape = process_scrape(&ctx.db, &result).await?;
+    let webhooks = webhooks_for_provider(&ctx.db, &sp).await?;
+    let webhook_interactions = dispatch_webhooks(&result, webhooks).await;
+    submit_webhook_responses(&ctx.db, processed_scrape, webhook_interactions).await?;
+    Ok(())
+}
 
 async fn run() -> Result<(), Box<dyn Error>> {
     let db = connect().await?;
     let client = Client::new();
-
-    let pending_scrapes = pending_scrapes(&db).await?;
-    let scoped_provider = pending_scrapes.get(0).unwrap();
-    let pinterest = PinterestBoardFeed { client: &client };
-    let latest_data = latest_media_ids_from_provider(&db, &scoped_provider.destination).await?;
-
-    let step = ScrapeRequestInput { latest_data };
-
-    let result = scrape(&scoped_provider.destination, &pinterest, &step).await?;
-    let processed_scrape = process_scrape(&db, &result).await?;
-    let webhooks = webhooks_for_provider(&db, scoped_provider).await?;
-    println!("{:?}", webhooks);
-    let webhook_interactions = dispatch_webhooks(&result, webhooks).await;
-    submit_webhook_responses(&db, processed_scrape, webhook_interactions).await?;
-    // println!("{:?}", nums);
+    let providers = pending_scrapes(&db).await?;
+    let ctx = Context { db, client };
+    stream::iter(providers)
+        .for_each_concurrent(PROVIDER_PROCESSING_LIMIT, |sp| async {
+            match iter(&ctx, sp).await {
+                Ok(a) => {}
+                Err(error) => {}
+            }
+            ()
+        })
+        .await;
     Ok(())
 }
 

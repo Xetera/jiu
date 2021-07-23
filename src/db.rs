@@ -24,11 +24,14 @@ pub async fn connect() -> Result<Database, Error> {
 // Grab the latest N images from a relevant provider destination
 pub async fn latest_media_ids_from_provider(
     db: &Database,
-    destination: &str,
+    provider: &ScopedProvider,
 ) -> Result<HashSet<String>, sqlx::error::Error> {
     let out = sqlx::query!(
-        "SELECT unique_identifier FROM media WHERE provider_destination = $1 order by discovered_at desc limit 10",
-        destination
+        "SELECT unique_identifier FROM media
+        WHERE provider_name = $1 AND provider_destination = $2
+        order by discovered_at desc, id limit 10",
+        provider.name,
+        provider.destination
     )
     .map(|e| e.unique_identifier)
     .fetch_all(db)
@@ -66,12 +69,14 @@ pub async fn pending_scrapes(db: &Database) -> Result<Vec<ScopedProvider>, Error
         .await
 }
 
-pub async fn process_scrape(db: &Database, scrape: &Scrape) -> Result<ProcessedScrape, Error> {
-    let provider_destination = &scrape.provider_destination;
+pub async fn process_scrape<'a>(
+    db: &Database,
+    scrape: &Scrape<'a>,
+) -> Result<ProcessedScrape, Error> {
     let mut tx = db.begin().await?;
     let out = sqlx::query!(
         "INSERT INTO scrape (provider_destination) VALUES ($1) returning id",
-        &provider_destination
+        scrape.provider.destination
     )
     .fetch_one(&mut tx)
     .await?;
@@ -95,6 +100,7 @@ pub async fn process_scrape(db: &Database, scrape: &Scrape) -> Result<ProcessedS
                 for media in provider_result.images.iter() {
                     let _media_row = sqlx::query!(
                         "INSERT INTO media (
+                            provider_name,
                             provider_destination,
                             scrape_request_id,
                             image_url,
@@ -103,9 +109,10 @@ pub async fn process_scrape(db: &Database, scrape: &Scrape) -> Result<ProcessedS
                             unique_identifier,
                             posted_at,
                             discovered_at
-                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                         ON CONFLICT DO NOTHING returning *",
-                        &provider_destination,
+                        &scrape.provider.name,
+                        &scrape.provider.destination,
                         scrape_request_row.id,
                         media.image_url,
                         media.page_url,
@@ -161,7 +168,7 @@ pub async fn process_scrape(db: &Database, scrape: &Scrape) -> Result<ProcessedS
             ScraperStep::Error(ProviderFailure::Url) => {
                 println!(
                     "Could not formal url properly for {}: {}",
-                    provider_destination, scrape.provider_id
+                    scrape.provider.name, scrape.provider.destination
                 );
             }
         }
