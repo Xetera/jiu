@@ -1,10 +1,12 @@
 use super::discord::*;
 use crate::{
     models::DatabaseWebhook,
+    request::HttpError,
     scraper::{scraper::ScraperStep, ProviderMedia, Scrape},
     webhook::{webhook_type, WebhookDestination},
 };
 use futures::{stream, StreamExt};
+use log::error;
 use reqwest::{Client, Response};
 use serde::Serialize;
 use std::{cell::RefCell, cmp::min, time::Instant};
@@ -15,8 +17,8 @@ pub struct WebhookDispatch {
 
 #[derive(Debug)]
 pub struct WebhookInteraction {
-    pub url: String,
-    pub response: Result<Response, reqwest::Error>,
+    pub webhook: DatabaseWebhook,
+    pub response: Result<Response, HttpError>,
     pub response_time: std::time::Duration,
 }
 
@@ -55,11 +57,10 @@ pub async fn dispatch_webhooks(
         let response = match webhook_type(&webhook.destination) {
             WebhookDestination::Custom => {
                 builder
-                    .header("content-type", "application/json")
                     .json(&WebhookPayload {
                         provider_type: scrape.provider_id.clone(),
                         media: &media,
-                        metadata: webhook.metadata,
+                        metadata: webhook.metadata.clone(),
                     })
                     .send()
                     .await
@@ -67,19 +68,25 @@ pub async fn dispatch_webhooks(
             // TODO: we should split discord webhooks into a separate stream and rate-limit it harder
             // to make sure the running ip doesn't get donked by discord
             WebhookDestination::Discord => {
-                let body = discord_payload(discord_media.to_vec());
-                println!("{:?}", body);
-                builder
-                    // .header("content-type", "multipart/form-data")
-                    .json(&body)
-                    .send()
-                    .await
+                let body = dbg!(discord_payload(discord_media.to_vec()));
+                match add_wait_parameter(&webhook.destination) {
+                    Ok(url) => client
+                        .post(dbg!(url.as_str()))
+                        .json(&body)
+                        .send()
+                        .await
+                        .and_then(|res| res.error_for_status()),
+                    Err(error) => {
+                        error!("{:?}", error);
+                        panic!()
+                    }
+                }
             }
-        };
+        }
+        .map_err(|err| HttpError::ReqwestError(err));
         let response_time = instant.elapsed();
-        let url = webhook.destination;
         output.push(WebhookInteraction {
-            url,
+            webhook,
             response,
             response_time,
         });

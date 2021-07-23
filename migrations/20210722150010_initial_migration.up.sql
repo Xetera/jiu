@@ -9,10 +9,11 @@ CREATE TABLE IF NOT EXISTS webhook(
 );
 
 CREATE TABLE IF NOT EXISTS provider_resource(
+  id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   -- This can be a FQDN or an identifier that maps to a unique API endpoint
   -- on the provider's end
-  destination TEXT PRIMARY KEY,
-  name TEXT,
+  destination TEXT NOT NULL,
+  name TEXT NOT NULL,
   enabled BOOLEAN DEFAULT True,
   priority INTEGER NOT NULL DEFAULT 5 CHECK(priority >= 1 AND priority <= 10),
   UNIQUE(destination, name)
@@ -20,7 +21,10 @@ CREATE TABLE IF NOT EXISTS provider_resource(
 
 CREATE TABLE IF NOT EXISTS scrape(
   id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  provider_destination TEXT NOT NULL REFERENCES provider_resource(destination) ON UPDATE CASCADE
+  provider_name TEXT,
+  provider_destination TEXT,
+  FOREIGN KEY (provider_name, provider_destination)
+    REFERENCES provider_resource(name, destination) ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- each scrape can have more than one request
@@ -38,7 +42,8 @@ CREATE TABLE IF NOT EXISTS media(
   -- This is necessary when trying to sort media that were
   -- crawled at the same time
   id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  provider_destination TEXT REFERENCES provider_resource(destination) ON DELETE SET NULL,
+  provider_name TEXT,
+  provider_destination TEXT,
   scrape_request_id INTEGER REFERENCES scrape_request(id) ON DELETE SET NULL,
   -- We are assuming there is only one type of url
   image_url TEXT NOT NULL UNIQUE,
@@ -50,8 +55,9 @@ CREATE TABLE IF NOT EXISTS media(
   -- could be null if the provider doesn't have the information
   posted_at TIMESTAMP WITHOUT TIME ZONE NULL,
   discovered_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
-  UNIQUE(unique_identifier, provider_destination)
-  -- we don't want to crawl the same data multiple times
+  UNIQUE(unique_identifier, provider_name),
+  FOREIGN KEY (provider_name, provider_destination)
+    REFERENCES provider_resource(name, destination) ON UPDATE CASCADE ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS scrape_error(
@@ -66,7 +72,10 @@ CREATE TABLE IF NOT EXISTS scrape_error(
 CREATE TABLE IF NOT EXISTS webhook_source(
   id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   webhook_id INTEGER REFERENCES webhook(id),
-  provider_destination TEXT REFERENCES provider_resource(destination) ON UPDATE CASCADE
+  provider_name TEXT,
+  provider_destination TEXT,
+  FOREIGN KEY (provider_name, provider_destination)
+    REFERENCES provider_resource(name, destination) ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS webhook_invocation(

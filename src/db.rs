@@ -1,6 +1,7 @@
 use crate::models::DatabaseWebhook;
+use crate::request::HttpError;
 use crate::scraper::scraper::{Scrape, ScraperStep};
-use crate::scraper::ProviderFailure;
+use crate::scraper::{ProviderFailure, ScopedProvider};
 use crate::webhook::dispatcher::WebhookInteraction;
 use dotenv::dotenv;
 use log::error;
@@ -10,7 +11,9 @@ use std::collections::HashSet;
 use std::env;
 use std::iter::FromIterator;
 
-pub async fn connect() -> Result<Pool<Postgres>, Error> {
+type Database = Pool<Postgres>;
+
+pub async fn connect() -> Result<Database, Error> {
     dotenv().ok();
     Ok(PgPoolOptions::new()
         .max_connections(5)
@@ -20,7 +23,7 @@ pub async fn connect() -> Result<Pool<Postgres>, Error> {
 
 // Grab the latest N images from a relevant provider destination
 pub async fn latest_media_ids_from_provider(
-    db: &Pool<Postgres>,
+    db: &Database,
     destination: &str,
 ) -> Result<HashSet<String>, sqlx::error::Error> {
     let out = sqlx::query!(
@@ -34,21 +37,36 @@ pub async fn latest_media_ids_from_provider(
 }
 
 pub async fn webhooks_for_provider(
-    db: &Pool<Postgres>,
-    destination: &str,
+    db: &Database,
+    provider_resolvable: &ScopedProvider,
 ) -> Result<Vec<DatabaseWebhook>, sqlx::error::Error> {
     sqlx::query_as!(
         DatabaseWebhook,
         "SELECT webhook.* FROM webhook
         JOIN webhook_source on webhook_source.webhook_id = webhook.id
-        WHERE webhook_source.provider_destination = $1",
-        destination
+        WHERE webhook_source.provider_destination = $1 AND webhook_source.provider_name = $2",
+        provider_resolvable.destination,
+        provider_resolvable.name
     )
     .fetch_all(db)
     .await
 }
 
-pub async fn process_scrape(db: &Pool<Postgres>, scrape: &Scrape) -> Result<(), Error> {
+pub struct ProcessedScrape {
+    scrape_id: i32,
+}
+
+pub async fn pending_scrapes(db: &Database) -> Result<Vec<ScopedProvider>, Error> {
+    sqlx::query!("SELECT * FROM provider_resource")
+        .map(|row| ScopedProvider {
+            destination: row.destination,
+            name: row.name,
+        })
+        .fetch_all(db)
+        .await
+}
+
+pub async fn process_scrape(db: &Database, scrape: &Scrape) -> Result<ProcessedScrape, Error> {
     let provider_destination = &scrape.provider_destination;
     let mut tx = db.begin().await?;
     let out = sqlx::query!(
@@ -64,26 +82,29 @@ pub async fn process_scrape(db: &Pool<Postgres>, scrape: &Scrape) -> Result<(), 
             ScraperStep::Data(provider_result) => {
                 let response_code = provider_result.response_code.as_u16();
                 let scrape_request_row = sqlx::query!(
-            "INSERT INTO scrape_request (scrape_id, response_code, response_delay, scraped_at, page) VALUES ($1, $2, $3, $4, $5) returning id",
-            scrape_id,
-            response_code as u32,
-            // unsafe downcast from u128? I hope the request doesn't take 2 billion miliseconds kekw
-            provider_result.response_delay.as_millis() as u32,
-            request.date.naive_utc(),
-            i as u32
-        ).fetch_one(&mut tx).await?;
+                    "INSERT INTO scrape_request (scrape_id, response_code, response_delay, scraped_at, page)
+                    VALUES ($1, $2, $3, $4, $5)
+                    RETURNING id",
+                    scrape_id,
+                    response_code as u32,
+                    // unsafe downcast from u128? I hope the request doesn't take 2 billion miliseconds kekw
+                    provider_result.response_delay.as_millis() as u32,
+                    request.date.naive_utc(),
+                    i as u32
+                ).fetch_one(&mut tx).await?;
                 for media in provider_result.images.iter() {
                     let _media_row = sqlx::query!(
                         "INSERT INTO media (
-                    provider_destination,
-                    scrape_request_id,
-                    image_url,
-                    page_url,
-                    reference_url,
-                    unique_identifier,
-                    posted_at,
-                    discovered_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING returning *",
+                            provider_destination,
+                            scrape_request_id,
+                            image_url,
+                            page_url,
+                            reference_url,
+                            unique_identifier,
+                            posted_at,
+                            discovered_at
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                        ON CONFLICT DO NOTHING returning *",
                         &provider_destination,
                         scrape_request_row.id,
                         media.image_url,
@@ -97,38 +118,44 @@ pub async fn process_scrape(db: &Pool<Postgres>, scrape: &Scrape) -> Result<(), 
                     .await?;
                 }
             }
-            ScraperStep::Error(ProviderFailure::Deserialization(err, status)) => {
-                sqlx::query!(
-                    "INSERT INTO scrape_error (scrape_id, response_code, response_body) VALUES ($1, $2, $3) returning id",
-                    scrape_id,
-                    status.as_u16() as i32,
-                    err,
-                )
-                .fetch_one(&mut tx)
-                .await?;
-            }
-            ScraperStep::Error(ProviderFailure::Fetch(err)) => {
-                // we should not be getting request related errors, only response errors
-                if err.is_request() {
-                    error!(
-                        "Got an error from a provider that was caused by a request\n{:?}",
-                        err.url()
-                    );
-                    error!("{:?}", err);
-                    continue;
-                }
-                if let Some(status) = err.status() {
-                    sqlx::query!(
-                        "INSERT INTO scrape_error (scrape_id, response_code) VALUES ($1, $2) returning id",
-                        scrape_id,
-                        status.as_u16() as i32,
-                    )
-                    .fetch_one(&mut tx)
-                    .await?;
-                } else {
-                    error!("Got an unexpected error from a provider that doesn't have a status",);
-                    error!("{:?}", err);
-                    continue;
+            ScraperStep::Error(ProviderFailure::HttpError(err)) => {
+                match &err {
+                    HttpError::ReqwestError(err) => {
+                        // we should not be getting request related errors, only response errors
+                        if err.is_request() {
+                            error!(
+                                "Got an error from a provider that was caused by a request\n{:?}",
+                                err.url()
+                            );
+                            error!("{:?}", err);
+                            continue;
+                        }
+                        if let Some(status) = err.status() {
+                            sqlx::query!(
+                                "INSERT INTO scrape_error (scrape_id, response_code)
+                                VALUES ($1, $2) returning id",
+                                scrape_id,
+                                status.as_u16() as i32,
+                            )
+                            .fetch_one(&mut tx)
+                            .await?;
+                        } else {
+                            error!("Got an unexpected error from a provider that doesn't have a status",);
+                            error!("{:?}", err);
+                            continue;
+                        }
+                    }
+                    HttpError::FailStatus(ctx) | HttpError::UnexpectedBody(ctx) => {
+                        sqlx::query!(
+                            "INSERT INTO scrape_error (scrape_id, response_code, response_body)
+                            VALUES ($1, $2, $3) returning id",
+                            scrape_id,
+                            ctx.code.as_u16() as i32,
+                            ctx.body,
+                        )
+                        .fetch_one(&mut tx)
+                        .await?;
+                    }
                 }
             }
             ScraperStep::Error(ProviderFailure::Url) => {
@@ -140,13 +167,12 @@ pub async fn process_scrape(db: &Pool<Postgres>, scrape: &Scrape) -> Result<(), 
         }
     }
     tx.commit().await?;
-    Ok(())
+    Ok(ProcessedScrape { scrape_id: out.id })
 }
 
 pub async fn submit_webhook_responses(
-    db: &Pool<Postgres>,
-    scrape_id: i32,
-    webhook_id: i32,
+    db: &Database,
+    processed_scrape: ProcessedScrape,
     interactions: Vec<WebhookInteraction>,
 ) -> Result<(), sqlx::Error> {
     let mut tx = db.begin().await?;
@@ -154,21 +180,38 @@ pub async fn submit_webhook_responses(
     for interaction in interactions {
         let response_time = interaction.response_time.as_millis() as i32;
         let response = interaction.response;
-        if let Some(status) = response.map_or_else(|err| err.status(), |res| Some(res.status())) {
-            let out = sqlx::query!(
+        let status = match response {
+            Ok(res) => Some(res.status()),
+            Err(HttpError::UnexpectedBody(err)) | Err(HttpError::FailStatus(err)) => Some(err.code),
+            Err(HttpError::ReqwestError(err)) => {
+                let out = err.status();
+                if out.is_none() {
+                    println!("Received a response without a status code");
+                    eprintln!("{:?}", err);
+                }
+                out
+            }
+        };
+        if let Some(code) = status {
+            sqlx::query!(
                 "INSERT INTO webhook_invocation (
                     scrape_id,
                     webhook_id,
                     response_code,
                     response_delay
                 ) VALUES ($1, $2, $3, $4) RETURNING *",
-                scrape_id,
-                webhook_id,
-                status.as_u16() as i32,
+                processed_scrape.scrape_id,
+                interaction.webhook.id,
+                code.as_u16() as i32,
                 response_time
             )
             .fetch_one(&mut tx)
             .await?;
+        } else {
+            println!(
+                "Failed to persist webhook response from {}",
+                interaction.webhook.destination
+            )
         }
     }
     tx.commit().await?;

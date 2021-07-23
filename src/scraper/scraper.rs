@@ -66,8 +66,6 @@ pub async fn scrape<F: Sync + Copy + Provider>(
                 });
             }
             InternalScraperStep::Data(page) => {
-                let response_code = page.response_code;
-                let response_delay = page.response_delay;
                 let original_image_count = page.images.len();
                 let images = page
                     .images
@@ -77,11 +75,6 @@ pub async fn scrape<F: Sync + Copy + Provider>(
                     .take_while(|r| !input.latest_data.contains(&r.unique_identifier))
                     .collect::<Vec<ProviderMedia>>();
                 let new_image_count = images.len();
-                let provider_result = ProviderResult {
-                    images,
-                    response_code,
-                    response_delay,
-                };
                 scrape_requests.push(ScrapeRequest {
                     date,
                     step: ScraperStep::Data(page),

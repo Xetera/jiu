@@ -1,6 +1,9 @@
 use jiu::{
-    db::{connect, latest_media_ids_from_provider, process_scrape, webhooks_for_provider},
-    scraper::{scraper::scrape, PinterestBoardFeed, ScrapeRequestInput},
+    db::{
+        connect, latest_media_ids_from_provider, pending_scrapes, process_scrape,
+        submit_webhook_responses, webhooks_for_provider,
+    },
+    scraper::{scraper::scrape, PinterestBoardFeed, Provider, ScrapeRequestInput},
     webhook::dispatcher::dispatch_webhooks,
 };
 use reqwest::Client;
@@ -10,18 +13,20 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let db = connect().await?;
     let client = Client::new();
 
-    let provider_destination = "175147941697542476|/tyrajai2003/dream-catcher/";
+    let pending_scrapes = pending_scrapes(&db).await?;
+    let scoped_provider = pending_scrapes.get(0).unwrap();
     let pinterest = PinterestBoardFeed { client: &client };
-    let latest_data = latest_media_ids_from_provider(&db, provider_destination).await?;
+    let latest_data = latest_media_ids_from_provider(&db, &scoped_provider.destination).await?;
 
     let step = ScrapeRequestInput { latest_data };
 
-    let result = scrape(provider_destination, &pinterest, &step).await?;
-    process_scrape(&db, &result).await?;
-    let webhooks = webhooks_for_provider(&db, provider_destination).await?;
+    let result = scrape(&scoped_provider.destination, &pinterest, &step).await?;
+    let processed_scrape = process_scrape(&db, &result).await?;
+    let webhooks = webhooks_for_provider(&db, scoped_provider).await?;
     println!("{:?}", webhooks);
-    let nums = dispatch_webhooks(&result, webhooks).await;
-    println!("{:?}", nums);
+    let webhook_interactions = dispatch_webhooks(&result, webhooks).await;
+    submit_webhook_responses(&db, processed_scrape, webhook_interactions).await?;
+    // println!("{:?}", nums);
     Ok(())
 }
 

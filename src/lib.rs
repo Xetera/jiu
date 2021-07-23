@@ -1,5 +1,6 @@
 pub mod db;
 pub mod models;
+pub mod request;
 pub mod scraper;
 pub mod webhook;
 pub use dotenv::dotenv;

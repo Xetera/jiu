@@ -1,3 +1,5 @@
+use crate::request::HttpError;
+
 use super::ScrapeUrl;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -59,15 +61,13 @@ pub enum ProviderStep {
 pub enum ProviderFailure {
     #[error("Error formatting URL")]
     Url,
-    #[error("Error from request")]
-    Fetch(ReqwestError),
-    #[error("Error processing the body")]
-    Deserialization(String, StatusCode),
+    #[error("Failed to process response from request")]
+    HttpError(HttpError),
 }
 
 impl From<reqwest::Error> for ProviderFailure {
     fn from(err: reqwest::Error) -> Self {
-        ProviderFailure::Fetch(err)
+        ProviderFailure::HttpError(HttpError::ReqwestError(err))
     }
 }
 
@@ -92,18 +92,10 @@ pub fn scrape_default_headers() -> HeaderMap {
     )])
 }
 
-pub async fn parse_response_body<T: DeserializeOwned>(
-    response: Response,
-) -> Result<T, ProviderFailure> {
-    let response_code = response.status();
-    let url = response.url().clone();
-    let response_body = response.text().await?;
-    serde_json::from_str::<T>(&response_body).map_err(|_error| {
-        // I hope the ToString implementation of Url is the full url otherwise it's
-        // gonna spam stderr lol
-        error!("Failed to parse response from {}", url);
-        ProviderFailure::Deserialization(response_body, response_code)
-    })
+impl From<HttpError> for ProviderFailure {
+    fn from(err: HttpError) -> Self {
+        Self::HttpError(err)
+    }
 }
 
 #[async_trait]
@@ -121,7 +113,7 @@ pub trait Provider {
     fn scrape_delay(&self) -> Duration {
         Duration::from_secs(2)
     }
-    /// Provider destination are any unique identifier a provider can try to resolve into an opaque ScrapeUrl
+    /// Provider destination are any unique identifier a provider can try to resolve into an opaque [ScrapeUrl`]
     fn from_provider_destination(
         self,
         id: String,

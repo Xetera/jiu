@@ -1,4 +1,4 @@
-use crate::scraper::providers::parse_response_body;
+use crate::request::parse_successful_response;
 
 use super::{
     scrape_default_headers, Provider, ProviderFailure, ProviderMedia, ProviderResult,
@@ -116,7 +116,7 @@ impl<'a> Provider for PinterestBoardFeed<'a> {
             .await?;
 
         let status = &response.status();
-        let response_json = parse_response_body::<PinterestResponse>(response).await?;
+        let response_json = parse_successful_response::<PinterestResponse>(response).await?;
         let images = response_json
             .resource_response
             .data
@@ -125,7 +125,7 @@ impl<'a> Provider for PinterestBoardFeed<'a> {
                 // I imagine every image has an "orig" size but we can't know for sure
                 pin.images.get("orig").map(|elem| ProviderMedia {
                     image_url: elem.url.to_owned(),
-                    page_url: Some(format!("https://www.pinterest.com/pin/{}", elem.url)),
+                    page_url: Some(format!("https://www.pinterest.com/pin/{}", pin.id)),
                     // yes, pinterest literally does not tell you when things were
                     // pinned. It's so stupid
                     post_date: None,
