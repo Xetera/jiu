@@ -1,3 +1,5 @@
+use crate::scraper::providers::parse_response_body;
+
 use super::{
     scrape_default_headers, Provider, ProviderFailure, ProviderMedia, ProviderResult,
     ProviderState, ProviderStep, ScrapeUrl,
@@ -78,7 +80,7 @@ impl<'a> Provider for PinterestBoardFeed<'a> {
     ) -> Result<ScrapeUrl, ProviderFailure> {
         let (id, path) = scrape_id
             .split_once(PINTEREST_BOARD_SEPARATOR)
-            .ok_or(ProviderFailure::UrlError)?;
+            .ok_or(ProviderFailure::Url)?;
 
         let data = PinterestRequestDict {
             options: PinterestRequestDictOptions {
@@ -91,11 +93,11 @@ impl<'a> Provider for PinterestBoardFeed<'a> {
         };
         let data_str = serde_json::to_string(&data)
             .ok()
-            .ok_or(ProviderFailure::UrlError)?;
+            .ok_or(ProviderFailure::Url)?;
 
         let url = Url::parse_with_params(URL_ROOT, &[("source_url", path), ("data", &data_str)])
             .ok()
-            .ok_or(ProviderFailure::UrlError)?;
+            .ok_or(ProviderFailure::Url)?;
         Ok(ScrapeUrl(dbg!(url.as_str().to_owned())))
     }
     async fn unfold(
@@ -114,8 +116,7 @@ impl<'a> Provider for PinterestBoardFeed<'a> {
             .await?;
 
         let status = &response.status();
-        let response_json = response.json::<PinterestResponse>().await?;
-
+        let response_json = parse_response_body::<PinterestResponse>(response).await?;
         let images = response_json
             .resource_response
             .data

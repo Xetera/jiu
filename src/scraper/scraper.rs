@@ -17,11 +17,19 @@ pub struct Scrape {
 #[derive(Debug)]
 pub struct ScrapeRequest {
     pub date: DateTime<Utc>,
-    pub provider_result: ProviderResult,
+    pub step: ScraperStep,
 }
 
+#[derive(Debug)]
+enum InternalScraperStep {
+    Data(ProviderResult),
+    Error(ProviderFailure),
+}
+
+#[derive(Debug)]
 pub enum ScraperStep {
     Data(ProviderResult),
+    // we only want to forward request related errors to the consumer
     Error(ProviderFailure),
 }
 
@@ -36,31 +44,35 @@ pub async fn scrape<F: Sync + Copy + Provider>(
     let mut steps = futures::stream::unfold(Some(seed), |state| async {
         match state {
             None => None,
-            Some(state) => match provider.unfold(scrape_id.to_owned(), state).await {
+            Some(state) => Some(match provider.unfold(scrape_id.to_owned(), state).await {
                 // we have to indicate an error to the consumer and stop iteration on the next cycle
-                Err(err) => Some((ScraperStep::Error(err), None)),
-                Ok(ProviderStep::End(result)) => Some((ScraperStep::Data(result), None)),
+                Err(err) => (InternalScraperStep::Error(err), None),
+                Ok(ProviderStep::End(result)) => (InternalScraperStep::Data(result), None),
                 Ok(ProviderStep::Next(result, next)) => {
-                    Some((ScraperStep::Data(result), Some(next)))
+                    (InternalScraperStep::Data(result), Some(next))
                 }
-            },
+            }),
         }
     })
     .boxed();
     let mut scrape_requests: Vec<ScrapeRequest> = vec![];
     while let Some(step) = steps.next().await {
+        let date = Utc::now();
         match step {
-            ScraperStep::Error(error) => {
-                println!("{:?}", error);
-                break;
+            InternalScraperStep::Error(error) => {
+                scrape_requests.push(ScrapeRequest {
+                    date,
+                    step: ScraperStep::Error(error),
+                });
             }
-            ScraperStep::Data(page) => {
-                let date = Utc::now();
+            InternalScraperStep::Data(page) => {
                 let response_code = page.response_code;
                 let response_delay = page.response_delay;
                 let original_image_count = page.images.len();
                 let images = page
                     .images
+                    // TODO: remove this clone using Rc?
+                    .clone()
                     .into_iter()
                     .take_while(|r| !input.latest_data.contains(&r.unique_identifier))
                     .collect::<Vec<ProviderMedia>>();
@@ -72,7 +84,7 @@ pub async fn scrape<F: Sync + Copy + Provider>(
                 };
                 scrape_requests.push(ScrapeRequest {
                     date,
-                    provider_result,
+                    step: ScraperStep::Data(page),
                 });
                 let has_known_image = new_image_count != original_image_count;
                 if has_known_image {
@@ -82,7 +94,13 @@ pub async fn scrape<F: Sync + Copy + Provider>(
                     );
                     break;
                 }
-                if scrape_requests.len() as u16 > provider.max_pagination() {
+                let pagination_limit = provider.max_pagination();
+                if scrape_requests.len() as u16 > pagination_limit {
+                    info!(
+                        "'{}' has reached its pagination limit of {}",
+                        provider.id(),
+                        pagination_limit
+                    );
                     break;
                 }
                 tokio::time::sleep(provider.scrape_delay()).await;

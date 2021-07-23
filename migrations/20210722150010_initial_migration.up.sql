@@ -59,7 +59,9 @@ CREATE TABLE IF NOT EXISTS scrape_error(
   -- already declared in scrape_request
   -- response_code INTEGER,
   response_body TEXT NOT NULL DEFAULT '',
-  scrape_request_id INTEGER NOT NULL REFERENCES scrape_request(id)
+  -- this could be null if the scraper error is deserialization related
+  response_code TEXT NULL,
+  scrape_id INTEGER NOT NULL REFERENCES scrape(id)
 );
 
 CREATE TABLE IF NOT EXISTS webhook_source(

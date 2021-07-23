@@ -1,7 +1,7 @@
 use super::discord::*;
 use crate::{
     models::DatabaseWebhook,
-    scraper::{ProviderMedia, Scrape},
+    scraper::{scraper::ScraperStep, ProviderMedia, Scrape},
     webhook::{webhook_type, WebhookDestination},
 };
 use futures::{stream, StreamExt};
@@ -15,9 +15,9 @@ pub struct WebhookDispatch {
 
 #[derive(Debug)]
 pub struct WebhookInteraction {
-    url: String,
-    response: Result<Response, reqwest::Error>,
-    response_time: std::time::Duration,
+    pub url: String,
+    pub response: Result<Response, reqwest::Error>,
+    pub response_time: std::time::Duration,
 }
 
 #[derive(Debug, Serialize)]
@@ -40,7 +40,11 @@ pub async fn dispatch_webhooks(
     let media = scrape
         .requests
         .iter()
-        .flat_map(|req| &req.provider_result.images)
+        .filter_map(|req| match &req.step {
+            ScraperStep::Data(data) => Some(data),
+            ScraperStep::Error(_) => None,
+        })
+        .flat_map(|result| &result.images)
         .collect::<Vec<&ProviderMedia>>();
     let discord_media = &media[0..min(media.len(), DISCORD_IMAGE_DISPLAY_LIMIT)];
     let ref_cell = RefCell::new(&mut results);

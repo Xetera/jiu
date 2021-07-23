@@ -1,11 +1,12 @@
 use super::ScrapeUrl;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use log::error;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
-    Error as ReqwestError, StatusCode,
+    Error as ReqwestError, Response, StatusCode,
 };
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{collections::HashSet, env, iter::FromIterator, ops::Add, time::Duration};
 use thiserror::Error;
 
@@ -57,14 +58,16 @@ pub enum ProviderStep {
 #[derive(Error, Debug)]
 pub enum ProviderFailure {
     #[error("Error formatting URL")]
-    UrlError,
+    Url,
     #[error("Error from request")]
-    FetchError(ReqwestError),
+    Fetch(ReqwestError),
+    #[error("Error processing the body")]
+    Deserialization(String, StatusCode),
 }
 
 impl From<reqwest::Error> for ProviderFailure {
     fn from(err: reqwest::Error) -> Self {
-        ProviderFailure::FetchError(err)
+        ProviderFailure::Fetch(err)
     }
 }
 
@@ -87,6 +90,20 @@ pub fn scrape_default_headers() -> HeaderMap {
         HeaderName::from_static("user-agent"),
         HeaderValue::from_str(&user_agent).unwrap(),
     )])
+}
+
+pub async fn parse_response_body<T: DeserializeOwned>(
+    response: Response,
+) -> Result<T, ProviderFailure> {
+    let response_code = response.status();
+    let url = response.url().clone();
+    let response_body = response.text().await?;
+    serde_json::from_str::<T>(&response_body).map_err(|_error| {
+        // I hope the ToString implementation of Url is the full url otherwise it's
+        // gonna spam stderr lol
+        error!("Failed to parse response from {}", url);
+        ProviderFailure::Deserialization(response_body, response_code)
+    })
 }
 
 #[async_trait]
