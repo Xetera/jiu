@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS provider_resource(
   name TEXT NOT NULL,
   enabled BOOLEAN DEFAULT True,
   priority INTEGER NOT NULL DEFAULT 5 CHECK(priority >= 1 AND priority <= 10),
+  last_scrape TIMESTAMP WITHOUT TIME ZONE NULL,
   UNIQUE(destination, name)
 );
 

@@ -1,13 +1,15 @@
-use crate::models::DatabaseWebhook;
+use crate::models::{DatabaseWebhook, PendingProvider};
 use crate::request::HttpError;
 use crate::scraper::scraper::{Scrape, ScraperStep};
 use crate::scraper::{ProviderFailure, ScopedProvider};
 use crate::webhook::dispatcher::WebhookInteraction;
+use chrono::{DateTime, Offset, Utc};
 use dotenv::dotenv;
 use log::error;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{Error, Pool, Postgres};
 use std::collections::HashSet;
+use std::convert::TryFrom;
 use std::env;
 use std::iter::FromIterator;
 
@@ -59,11 +61,14 @@ pub struct ProcessedScrape {
     scrape_id: i32,
 }
 
-pub async fn pending_scrapes(db: &Database) -> Result<Vec<ScopedProvider>, Error> {
+pub async fn pending_scrapes(db: &Database) -> Result<Vec<PendingProvider>, Error> {
     sqlx::query!("SELECT * FROM provider_resource")
-        .map(|row| ScopedProvider {
-            destination: row.destination,
-            name: row.name,
+        .map(|row| PendingProvider {
+            provider: ScopedProvider {
+                destination: row.destination,
+                name: row.name,
+            },
+            last_scrape: row.last_scrape.map(|r| DateTime::from_utc(r, Utc)),
         })
         .fetch_all(db)
         .await
@@ -79,6 +84,15 @@ pub async fn process_scrape<'a>(
         scrape.provider.destination
     )
     .fetch_one(&mut tx)
+    .await?;
+    sqlx::query!(
+        "UPDATE provider_resource SET last_scrape = $1 WHERE name = $2 AND destination = $3",
+        // we don't really care about making sure this is completely correct
+        scrape.requests.last().map(|out| out.date.naive_utc()),
+        scrape.provider.name,
+        scrape.provider.destination,
+    )
+    .fetch_one(db)
     .await?;
     let scrape_id = out.id;
 

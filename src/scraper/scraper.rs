@@ -38,7 +38,8 @@ pub async fn scrape<'a, F: Sync + Copy + Provider>(
     input: &ScrapeRequestInput,
 ) -> Result<Scrape<'a>, ProviderFailure> {
     println!("Running");
-    let url = provider.from_provider_destination(sp.destination.clone(), None)?;
+    let page_size = provider.estimated_page_size(input.last_scrape);
+    let url = provider.from_provider_destination(sp.destination.clone(), page_size, None)?;
     let seed = ProviderState { url };
     let mut steps = futures::stream::unfold(Some(seed), |state| async {
         match state {
@@ -47,8 +48,19 @@ pub async fn scrape<'a, F: Sync + Copy + Provider>(
                 // we have to indicate an error to the consumer and stop iteration on the next cycle
                 Err(err) => (InternalScraperStep::Error(err), None),
                 Ok(ProviderStep::End(result)) => (InternalScraperStep::Data(result), None),
-                Ok(ProviderStep::Next(result, next)) => {
-                    (InternalScraperStep::Data(result), Some(next))
+                Ok(ProviderStep::Next(result, response_json)) => {
+                    let maybe_next_url = provider.from_provider_destination(
+                        sp.destination.clone(),
+                        page_size,
+                        Some(response_json),
+                    );
+                    match maybe_next_url {
+                        Err(err) => (InternalScraperStep::Error(err), None),
+                        Ok(url) => {
+                            let next_state = ProviderState { url };
+                            (InternalScraperStep::Data(result), Some(next_state))
+                        }
+                    }
                 }
             }),
         }

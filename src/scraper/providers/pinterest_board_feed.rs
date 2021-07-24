@@ -1,10 +1,11 @@
 use crate::request::{parse_successful_response, request_default_headers};
 
 use super::{
-    Provider, ProviderFailure, ProviderMedia, ProviderResult, ProviderState, ProviderStep,
-    ScrapeUrl,
+    PageSize, Provider, ProviderFailure, ProviderMedia, ProviderResult, ProviderState,
+    ProviderStep, ScrapeUrl,
 };
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, time::Instant};
@@ -63,7 +64,10 @@ const PINTEREST_BOARD_SEPARATOR: &str = "|";
 
 const URL_ROOT: &str = "https://www.pinterest.com/resource/BoardFeedResource/get";
 
-const EXPECTED_PAGE_SIZE: usize = 200;
+const MAXIMUM_PAGE_SIZE: usize = 200;
+
+/// pinterest uses a page size of 25
+const PROVIDER_NATIVE_PAGE_SIZE: usize = 25;
 
 // PinterestBoard ids are made up of 2 pieces, board_url and board_id formatted in this way
 // "board_id|board_url"
@@ -73,9 +77,16 @@ impl<'a> Provider for PinterestBoardFeed<'a> {
     fn id(&self) -> &'static str {
         "pinterest.board_feed"
     }
+    fn estimated_page_size(&self, last_scraped: Option<DateTime<Utc>>) -> PageSize {
+        PageSize(match last_scraped {
+            None => MAXIMUM_PAGE_SIZE,
+            Some(date) => PROVIDER_NATIVE_PAGE_SIZE,
+        })
+    }
     fn from_provider_destination(
         self,
         scrape_id: String,
+        page_size: PageSize,
         previous_result: Option<PinterestResponse>,
     ) -> Result<ScrapeUrl, ProviderFailure> {
         let (id, path) = scrape_id
@@ -88,7 +99,7 @@ impl<'a> Provider for PinterestBoardFeed<'a> {
                     .and_then(|res| res.resource_response.bookmark.map(|bm| vec![bm])),
                 board_id: id,
                 board_url: path,
-                page_size: EXPECTED_PAGE_SIZE,
+                page_size: page_size.0,
             },
         };
         let data_str = serde_json::to_string(&data)
@@ -104,7 +115,7 @@ impl<'a> Provider for PinterestBoardFeed<'a> {
         &self,
         identifier: String,
         state: ProviderState,
-    ) -> Result<ProviderStep, ProviderFailure> {
+    ) -> Result<ProviderStep<Self::Step>, ProviderFailure> {
         let instant = Instant::now();
         println!("Scraping pinterest...");
         let response = self
@@ -144,11 +155,7 @@ impl<'a> Provider for PinterestBoardFeed<'a> {
         let bookmark = response_json.resource_response.bookmark.clone();
         // we receive a bookmark when there are more images to scrape
         Ok(match bookmark {
-            Some(_) => {
-                let next_url = self.from_provider_destination(identifier, Some(response_json))?;
-                let next_state = ProviderState { url: next_url };
-                ProviderStep::Next(result, next_state)
-            }
+            Some(_) => ProviderStep::Next(result, response_json),
             None => ProviderStep::End(result),
         })
     }

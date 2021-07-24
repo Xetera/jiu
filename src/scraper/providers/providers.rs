@@ -1,6 +1,6 @@
 use crate::request::HttpError;
 
-use super::ScrapeUrl;
+use super::{PageSize, ScrapeUrl};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use log::error;
@@ -49,8 +49,8 @@ impl Add<ProviderResult> for ProviderResult {
 }
 
 #[derive(Debug)]
-pub enum ProviderStep {
-    Next(ProviderResult, ProviderState),
+pub enum ProviderStep<T> {
+    Next(ProviderResult, T),
     End(ProviderResult),
 }
 
@@ -76,6 +76,7 @@ pub struct ProviderState {
 
 pub struct ScrapeRequestInput {
     pub latest_data: HashSet<String>,
+    pub last_scrape: Option<DateTime<Utc>>,
 }
 
 impl From<HttpError> for ProviderFailure {
@@ -87,7 +88,12 @@ impl From<HttpError> for ProviderFailure {
 #[async_trait]
 pub trait Provider {
     type Step;
+    /// a string that uniquely identifies this provider
     fn id(&self) -> &'static str;
+    /// The page size that should be used when scraping
+    /// Destinations that haven't been scraped before should be using a larger
+    /// page size to
+    fn estimated_page_size(&self, last_scraped: Option<DateTime<Utc>>) -> PageSize;
     /// The maximum number of times a resource can be paginated before exiting.
     /// This value is ignored if the context has no images aka the resource
     /// is being scraped for the first time
@@ -103,6 +109,7 @@ pub trait Provider {
     fn from_provider_destination(
         self,
         id: String,
+        page_size: PageSize,
         previous_result: Option<Self::Step>,
     ) -> Result<ScrapeUrl, ProviderFailure>;
     /// Process a single iteration of the resource
@@ -110,5 +117,5 @@ pub trait Provider {
         &self,
         identifier: String,
         state: ProviderState,
-    ) -> Result<ProviderStep, ProviderFailure>;
+    ) -> Result<ProviderStep<Self::Step>, ProviderFailure>;
 }

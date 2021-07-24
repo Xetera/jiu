@@ -4,6 +4,7 @@ use jiu::{
         connect, latest_media_ids_from_provider, pending_scrapes, process_scrape,
         submit_webhook_responses, webhooks_for_provider,
     },
+    models::PendingProvider,
     scraper::{scraper::scrape, PinterestBoardFeed, ScopedProvider, ScrapeRequestInput},
     webhook::dispatcher::dispatch_webhooks,
 };
@@ -18,13 +19,17 @@ struct Context {
     client: reqwest::Client,
 }
 
-async fn iter(ctx: &Context, sp: ScopedProvider) -> Result<(), Box<dyn Error>> {
+async fn iter(ctx: &Context, pending: PendingProvider) -> Result<(), Box<dyn Error>> {
+    let sp = pending.provider;
     let pinterest = PinterestBoardFeed {
         client: &ctx.client,
     };
     let latest_data = dbg!(latest_media_ids_from_provider(&ctx.db, &sp).await?);
 
-    let step = ScrapeRequestInput { latest_data };
+    let step = ScrapeRequestInput {
+        latest_data,
+        last_scrape: pending.last_scrape,
+    };
     let result = scrape(&sp, &pinterest, &step).await?;
     let processed_scrape = process_scrape(&ctx.db, &result).await?;
     let webhooks = webhooks_for_provider(&ctx.db, &sp).await?;

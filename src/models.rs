@@ -1,4 +1,6 @@
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime, Utc};
+
+use crate::scraper::ScopedProvider;
 
 #[derive(Debug)]
 pub struct DatabaseWebhook {
@@ -14,4 +16,9 @@ pub struct DatabaseWebhookSource {
     pub id: i32,
     pub webhook_id: i32,
     pub provider_destination: String,
+}
+#[derive(Debug)]
+pub struct PendingProvider {
+    pub provider: ScopedProvider,
+    pub last_scrape: Option<DateTime<Utc>>,
 }
