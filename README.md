@@ -24,6 +24,8 @@
 
 ## Usage
 
+Copy over `.env.example` to `.env` and fill out relevant fields
+
 WIP
 
 > If you would like to use this project, please change the `USER_AGENT` environment variable to identify your crawler accurately.

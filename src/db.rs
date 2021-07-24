@@ -1,17 +1,17 @@
 use crate::models::{DatabaseWebhook, PendingProvider};
 use crate::request::HttpError;
 use crate::scraper::scraper::{Scrape, ScraperStep};
-use crate::scraper::{ProviderFailure, ScopedProvider};
+use crate::scraper::{AllProviders, ProviderFailure, ScopedProvider};
 use crate::webhook::dispatcher::WebhookInteraction;
-use chrono::{DateTime, Offset, Utc};
+use chrono::{DateTime, Utc};
 use dotenv::dotenv;
 use log::error;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{Error, Pool, Postgres};
 use std::collections::HashSet;
-use std::convert::TryFrom;
 use std::env;
 use std::iter::FromIterator;
+use std::str::FromStr;
 
 type Database = Pool<Postgres>;
 
@@ -27,12 +27,12 @@ pub async fn connect() -> Result<Database, Error> {
 pub async fn latest_media_ids_from_provider(
     db: &Database,
     provider: &ScopedProvider,
-) -> Result<HashSet<String>, sqlx::error::Error> {
+) -> anyhow::Result<HashSet<String>> {
     let out = sqlx::query!(
         "SELECT unique_identifier FROM media
         WHERE provider_name = $1 AND provider_destination = $2
         order by discovered_at desc, id limit 10",
-        provider.name,
+        provider.name.to_string(),
         provider.destination
     )
     .map(|e| e.unique_identifier)
@@ -44,56 +44,68 @@ pub async fn latest_media_ids_from_provider(
 pub async fn webhooks_for_provider(
     db: &Database,
     provider_resolvable: &ScopedProvider,
-) -> Result<Vec<DatabaseWebhook>, sqlx::error::Error> {
-    sqlx::query_as!(
+) -> anyhow::Result<Vec<DatabaseWebhook>> {
+    Ok(sqlx::query_as!(
         DatabaseWebhook,
         "SELECT webhook.* FROM webhook
         JOIN webhook_source on webhook_source.webhook_id = webhook.id
         WHERE webhook_source.provider_destination = $1 AND webhook_source.provider_name = $2",
         provider_resolvable.destination,
-        provider_resolvable.name
+        provider_resolvable.name.to_string()
     )
     .fetch_all(db)
-    .await
+    .await?)
 }
 
+#[derive(Debug)]
 pub struct ProcessedScrape {
     scrape_id: i32,
 }
 
-pub async fn pending_scrapes(db: &Database) -> Result<Vec<PendingProvider>, Error> {
-    sqlx::query!("SELECT * FROM provider_resource")
+pub async fn pending_scrapes(db: &Database) -> anyhow::Result<Vec<PendingProvider>> {
+    Ok(sqlx::query!("SELECT * FROM provider_resource")
         .map(|row| PendingProvider {
             provider: ScopedProvider {
                 destination: row.destination,
-                name: row.name,
+                name: AllProviders::from_str(&row.name).expect(&format!(
+                    "Got {} from the database which is not a valid provider name",
+                    &row.name
+                )),
             },
             last_scrape: row.last_scrape.map(|r| DateTime::from_utc(r, Utc)),
         })
         .fetch_all(db)
-        .await
+        .await?)
 }
 
 pub async fn process_scrape<'a>(
     db: &Database,
     scrape: &Scrape<'a>,
-) -> Result<ProcessedScrape, Error> {
+) -> anyhow::Result<ProcessedScrape> {
     let mut tx = db.begin().await?;
+    println!(
+        "{:?}, {:?}",
+        scrape.provider.name.to_string(),
+        scrape.provider.destination
+    );
     let out = sqlx::query!(
-        "INSERT INTO scrape (provider_destination) VALUES ($1) returning id",
+        "INSERT INTO scrape (provider_name, provider_destination) VALUES ($1, $2) returning id",
+        scrape.provider.name.to_string(),
         scrape.provider.destination
     )
     .fetch_one(&mut tx)
     .await?;
-    sqlx::query!(
-        "UPDATE provider_resource SET last_scrape = $1 WHERE name = $2 AND destination = $3",
-        // we don't really care about making sure this is completely correct
-        scrape.requests.last().map(|out| out.date.naive_utc()),
-        scrape.provider.name,
-        scrape.provider.destination,
-    )
-    .fetch_one(db)
-    .await?;
+    // we don't really care about making sure this is completely correct
+    // if let Some(request) = scrape.requests.last() {
+    //     sqlx::query!(
+    //         "UPDATE provider_resource SET last_scrape = $1 WHERE name = $2 AND destination = $3",
+    //         request.date.naive_utc(),
+    //         scrape.provider.name.to_string(),
+    //         scrape.provider.destination,
+    //     )
+    //     .fetch_one(db)
+    //     .await?;
+    // }
     let scrape_id = out.id;
 
     for (i, request) in scrape.requests.iter().enumerate() {
@@ -125,7 +137,7 @@ pub async fn process_scrape<'a>(
                             discovered_at
                         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                         ON CONFLICT DO NOTHING returning *",
-                        &scrape.provider.name,
+                        &scrape.provider.name.to_string(),
                         &scrape.provider.destination,
                         scrape_request_row.id,
                         media.image_url,
@@ -154,7 +166,7 @@ pub async fn process_scrape<'a>(
                         if let Some(status) = err.status() {
                             sqlx::query!(
                                 "INSERT INTO scrape_error (scrape_id, response_code)
-                                VALUES ($1, $2) returning id",
+                                VALUES ($1, $2)",
                                 scrape_id,
                                 status.as_u16() as i32,
                             )
@@ -182,7 +194,8 @@ pub async fn process_scrape<'a>(
             ScraperStep::Error(ProviderFailure::Url) => {
                 println!(
                     "Could not formal url properly for {}: {}",
-                    scrape.provider.name, scrape.provider.destination
+                    scrape.provider.name.to_string(),
+                    scrape.provider.destination
                 );
             }
         }
@@ -195,7 +208,7 @@ pub async fn submit_webhook_responses(
     db: &Database,
     processed_scrape: ProcessedScrape,
     interactions: Vec<WebhookInteraction>,
-) -> Result<(), sqlx::Error> {
+) -> anyhow::Result<()> {
     let mut tx = db.begin().await?;
     // can't commit the invocation if we don't have a response status
     for interaction in interactions {
@@ -214,6 +227,7 @@ pub async fn submit_webhook_responses(
             }
         };
         if let Some(code) = status {
+            println!("{:?}", processed_scrape);
             sqlx::query!(
                 "INSERT INTO webhook_invocation (
                     scrape_id,

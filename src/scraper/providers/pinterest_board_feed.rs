@@ -1,14 +1,14 @@
 use crate::request::{parse_successful_response, request_default_headers};
 
 use super::{
-    PageSize, Provider, ProviderFailure, ProviderMedia, ProviderResult, ProviderState,
-    ProviderStep, ScrapeUrl,
+    AllProviders, PageSize, Pagination, Provider, ProviderFailure, ProviderMedia, ProviderResult,
+    ProviderState, ProviderStep, ScrapeUrl,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, time::Instant};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 use url::Url;
 
 #[derive(Debug, Deserialize)]
@@ -55,9 +55,9 @@ struct PinterestRequestDict<'a> {
     options: PinterestRequestDictOptions<'a>,
 }
 
-#[derive(Copy, Clone)]
-pub struct PinterestBoardFeed<'a> {
-    pub client: &'a Client,
+#[derive(Clone)]
+pub struct PinterestBoardFeed {
+    pub client: Arc<Client>,
 }
 
 const PINTEREST_BOARD_SEPARATOR: &str = "|";
@@ -72,22 +72,22 @@ const PROVIDER_NATIVE_PAGE_SIZE: usize = 25;
 // PinterestBoard ids are made up of 2 pieces, board_url and board_id formatted in this way
 // "board_id|board_url"
 #[async_trait]
-impl<'a> Provider for PinterestBoardFeed<'a> {
-    type Step = PinterestResponse;
-    fn id(&self) -> &'static str {
-        "pinterest.board_feed"
+impl Provider for PinterestBoardFeed {
+    fn id(&self) -> AllProviders {
+        AllProviders::PinterestBoardFeed
     }
     fn estimated_page_size(&self, last_scraped: Option<DateTime<Utc>>) -> PageSize {
         PageSize(match last_scraped {
+            // TODO: fix
             None => MAXIMUM_PAGE_SIZE,
-            Some(_date) => PROVIDER_NATIVE_PAGE_SIZE,
+            Some(_date) => MAXIMUM_PAGE_SIZE,
         })
     }
     fn from_provider_destination(
         self,
         scrape_id: String,
         page_size: PageSize,
-        previous_result: Option<PinterestResponse>,
+        pagination: Option<Pagination>,
     ) -> Result<ScrapeUrl, ProviderFailure> {
         let (id, path) = scrape_id
             .split_once(PINTEREST_BOARD_SEPARATOR)
@@ -95,8 +95,7 @@ impl<'a> Provider for PinterestBoardFeed<'a> {
 
         let data = PinterestRequestDict {
             options: PinterestRequestDictOptions {
-                bookmarks: &previous_result
-                    .and_then(|res| res.resource_response.bookmark.map(|bm| vec![bm])),
+                bookmarks: &pagination.map(|res| vec![res.next_page()]),
                 board_id: id,
                 board_url: path,
                 page_size: page_size.0,
@@ -111,12 +110,9 @@ impl<'a> Provider for PinterestBoardFeed<'a> {
             .ok_or(ProviderFailure::Url)?;
         Ok(ScrapeUrl(url.as_str().to_owned()))
     }
-    async fn unfold(
-        &self,
-        state: ProviderState,
-    ) -> Result<ProviderStep<Self::Step>, ProviderFailure> {
+    async fn unfold(&self, state: ProviderState) -> Result<ProviderStep, ProviderFailure> {
+        println!("Scraping pinterest");
         let instant = Instant::now();
-        println!("Scraping pinterest...");
         let response = self
             .client
             // I'm so sorry
@@ -124,6 +120,7 @@ impl<'a> Provider for PinterestBoardFeed<'a> {
             .headers(request_default_headers())
             .send()
             .await?;
+        let response_delay = instant.elapsed();
 
         let status = &response.status();
         let response_json = parse_successful_response::<PinterestResponse>(response).await?;
@@ -148,13 +145,13 @@ impl<'a> Provider for PinterestBoardFeed<'a> {
         let result = ProviderResult {
             images,
             response_code: status.to_owned(),
-            response_delay: instant.elapsed(),
+            response_delay,
         };
 
-        let bookmark = response_json.resource_response.bookmark.clone();
+        let bookmark_option = response_json.resource_response.bookmark.clone();
         // we receive a bookmark when there are more images to scrape
-        Ok(match bookmark {
-            Some(_) => ProviderStep::Next(result, response_json),
+        Ok(match bookmark_option {
+            Some(bookmark) => ProviderStep::Next(result, Pagination::NextCursor(bookmark)),
             None => ProviderStep::End(result),
         })
     }

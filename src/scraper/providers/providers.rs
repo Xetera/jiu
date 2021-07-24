@@ -1,12 +1,15 @@
-use crate::request::HttpError;
-
 use super::{PageSize, ScrapeUrl};
+use crate::request::HttpError;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use log::error;
 use reqwest::StatusCode;
+use serde;
 use serde::{Deserialize, Serialize};
+use sqlx;
 use std::{collections::HashSet, ops::Add, time::Duration};
+use strum_macros;
+use strum_macros::EnumString;
 use thiserror::Error;
 
 /// Placeholder for images that may contain more metadata in the future?
@@ -49,8 +52,8 @@ impl Add<ProviderResult> for ProviderResult {
 }
 
 #[derive(Debug)]
-pub enum ProviderStep<T> {
-    Next(ProviderResult, T),
+pub enum ProviderStep {
+    Next(ProviderResult, Pagination),
     End(ProviderResult),
 }
 
@@ -85,11 +88,27 @@ impl From<HttpError> for ProviderFailure {
     }
 }
 
+#[derive(Debug)]
+pub enum Pagination {
+    NextPage(i32),
+    NextCursor(String),
+}
+
+impl Pagination {
+    pub fn next_page(self) -> String {
+        match self {
+            Pagination::NextPage(num) => num.to_string(),
+            Pagination::NextCursor(cursor) => cursor,
+        }
+    }
+}
+
+/// Providers represent a generic endpoint on a single platform that can be scraped
+/// with a unique identifier for each specific resource
 #[async_trait]
-pub trait Provider {
-    type Step;
+pub trait Provider: Sync + Clone + Sized {
     /// a string that uniquely identifies this provider
-    fn id(&self) -> &'static str;
+    fn id(&self) -> AllProviders;
     /// The page size that should be used when scraping
     /// Destinations that haven't been scraped before should be using a larger
     /// page size to
@@ -105,16 +124,32 @@ pub trait Provider {
     fn scrape_delay(&self) -> Duration {
         Duration::from_secs(2)
     }
-    /// Provider destination are any unique identifier a provider can try to resolve into an opaque [ScrapeUrl`]
+    /// Provider destination are any unique identifier a provider can try to resolve into an opaque [ScrapeUrl`].
+    /// This method is called after every successful scrape to resolve the next page of media
     fn from_provider_destination(
         self,
         id: String,
         page_size: PageSize,
-        previous_result: Option<Self::Step>,
+        pagination: Option<Pagination>,
     ) -> Result<ScrapeUrl, ProviderFailure>;
     /// Process a single iteration of the resource
-    async fn unfold(
-        &self,
-        state: ProviderState,
-    ) -> Result<ProviderStep<Self::Step>, ProviderFailure>;
+    async fn unfold(&self, state: ProviderState) -> Result<ProviderStep, ProviderFailure>;
 }
+
+#[derive(
+    Debug, Copy, Clone, Serialize, EnumString, strum_macros::ToString, PartialEq, Eq, sqlx::Type,
+)]
+pub enum AllProviders {
+    #[strum(serialize = "pinterest.board_feed")]
+    PinterestBoardFeed,
+    #[strum(serialize = "twitter.timeline")]
+    TwitterTimeline,
+}
+
+// impl FromStr for AllProviders {}
+
+// impl std::fmt::Display for AllProviders {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         f.write_str(&serde_json::to_string(self).unwrap())
+//     }
+// }

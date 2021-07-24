@@ -6,6 +6,7 @@ use crate::scraper::ProviderMedia;
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use log::info;
+use serde::Serialize;
 
 #[derive(Debug)]
 pub struct Scrape<'a> {
@@ -32,32 +33,35 @@ pub enum ScraperStep {
     Error(ProviderFailure),
 }
 
-pub async fn scrape<'a, F: Sync + Copy + Provider>(
+pub async fn scrape<'a>(
     sp: &'a ScopedProvider,
-    provider: &F,
+    scrape: &impl Provider,
     input: &ScrapeRequestInput,
 ) -> Result<Scrape<'a>, ProviderFailure> {
-    println!("Running");
-    let page_size = provider.estimated_page_size(input.last_scrape);
-    let url = provider.from_provider_destination(sp.destination.clone(), page_size, None)?;
-    let seed = ProviderState { url };
+    let page_size = scrape.estimated_page_size(input.last_scrape);
+    let url = scrape.clone().from_provider_destination(
+        sp.destination.clone(),
+        page_size.to_owned(),
+        None,
+    )?;
+    let seed = ProviderState { url: url };
     let mut steps = futures::stream::unfold(Some(seed), |state| async {
         match state {
             None => None,
-            Some(state) => Some(match provider.unfold(state).await {
+            Some(state) => Some(match scrape.unfold(state).await {
                 // we have to indicate an error to the consumer and stop iteration on the next cycle
                 Err(err) => (InternalScraperStep::Error(err), None),
                 Ok(ProviderStep::End(result)) => (InternalScraperStep::Data(result), None),
                 Ok(ProviderStep::Next(result, response_json)) => {
-                    let maybe_next_url = provider.from_provider_destination(
+                    let maybe_next_url = scrape.clone().from_provider_destination(
                         sp.destination.clone(),
-                        page_size,
+                        page_size.to_owned(),
                         Some(response_json),
                     );
                     match maybe_next_url {
                         Err(err) => (InternalScraperStep::Error(err), None),
                         Ok(url) => {
-                            let next_state = ProviderState { url };
+                            let next_state = ProviderState { url: url.clone() };
                             (InternalScraperStep::Data(result), Some(next_state))
                         }
                     }
@@ -65,7 +69,7 @@ pub async fn scrape<'a, F: Sync + Copy + Provider>(
             }),
         }
     })
-    .boxed();
+    .boxed_local();
     let mut scrape_requests: Vec<ScrapeRequest> = vec![];
     while let Some(step) = steps.next().await {
         let date = Utc::now();
@@ -91,23 +95,23 @@ pub async fn scrape<'a, F: Sync + Copy + Provider>(
                     step: ScraperStep::Data(page),
                 });
                 let has_known_image = new_image_count != original_image_count;
+                let id = scrape.id().to_string();
                 if has_known_image {
                     info!(
                         "'{}' has finished crawling because it reached its last known data",
-                        provider.id()
+                        id
                     );
                     break;
                 }
-                let pagination_limit = provider.max_pagination();
+                let pagination_limit = scrape.max_pagination();
                 if scrape_requests.len() as u16 > pagination_limit {
                     info!(
                         "'{}' has reached its pagination limit of {}",
-                        provider.id(),
-                        pagination_limit
+                        id, pagination_limit
                     );
                     break;
                 }
-                tokio::time::sleep(provider.scrape_delay()).await;
+                tokio::time::sleep(scrape.scrape_delay()).await;
             }
         }
     }
@@ -116,3 +120,9 @@ pub async fn scrape<'a, F: Sync + Copy + Provider>(
         requests: scrape_requests,
     })
 }
+
+// pub fn maximize_element_distance(sps: Vec<ScopedProvider>) -> Vec<ScopedProvider> {
+//     sps.group_by(|a, b| a.destination == b.destination)
+//         .collect::<Vec<Vec<ScopedProvider>>>();
+//     sps
+// }

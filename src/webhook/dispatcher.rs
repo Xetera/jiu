@@ -2,7 +2,10 @@ use super::discord::*;
 use crate::{
     models::DatabaseWebhook,
     request::{request_default_headers, HttpError},
-    scraper::{scraper::ScraperStep, ProviderMedia, Scrape},
+    scraper::{
+        scraper::{Scrape, ScraperStep},
+        AllProviders, ProviderMedia,
+    },
     webhook::{webhook_type, WebhookDestination},
 };
 use futures::{stream, StreamExt};
@@ -24,7 +27,7 @@ pub struct WebhookInteraction {
 
 #[derive(Debug, Serialize)]
 pub struct WebhookPayload<'a> {
-    pub provider_type: String,
+    pub provider_type: AllProviders,
     // what even
     pub media: &'a Vec<&'a ProviderMedia>,
     pub metadata: Option<serde_json::Value>,

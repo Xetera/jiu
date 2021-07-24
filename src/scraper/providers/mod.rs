@@ -1,6 +1,6 @@
 pub mod pinterest_board_feed;
 mod providers;
-pub mod twitter_feed;
+pub mod weverse;
 use chrono::{DateTime, Utc};
 pub use pinterest_board_feed::*;
 pub use providers::*;
@@ -15,8 +15,8 @@ pub struct PageSize(usize);
 /// Identifier for a specific section of a site
 /// [name: pinterest.board_feed]
 /// [destination: <A unique identifier scoped to pinterest>]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ScopedProvider {
-    pub name: String,
+    pub name: AllProviders,
     pub destination: String,
 }
