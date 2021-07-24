@@ -44,7 +44,7 @@ pub async fn scrape<'a, F: Sync + Copy + Provider>(
     let mut steps = futures::stream::unfold(Some(seed), |state| async {
         match state {
             None => None,
-            Some(state) => Some(match provider.unfold(sp.destination.clone(), state).await {
+            Some(state) => Some(match provider.unfold(state).await {
                 // we have to indicate an error to the consumer and stop iteration on the next cycle
                 Err(err) => (InternalScraperStep::Error(err), None),
                 Ok(ProviderStep::End(result)) => (InternalScraperStep::Data(result), None),

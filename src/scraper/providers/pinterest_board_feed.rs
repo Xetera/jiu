@@ -80,7 +80,7 @@ impl<'a> Provider for PinterestBoardFeed<'a> {
     fn estimated_page_size(&self, last_scraped: Option<DateTime<Utc>>) -> PageSize {
         PageSize(match last_scraped {
             None => MAXIMUM_PAGE_SIZE,
-            Some(date) => PROVIDER_NATIVE_PAGE_SIZE,
+            Some(_date) => PROVIDER_NATIVE_PAGE_SIZE,
         })
     }
     fn from_provider_destination(
@@ -113,7 +113,6 @@ impl<'a> Provider for PinterestBoardFeed<'a> {
     }
     async fn unfold(
         &self,
-        identifier: String,
         state: ProviderState,
     ) -> Result<ProviderStep<Self::Step>, ProviderFailure> {
         let instant = Instant::now();

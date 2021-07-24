@@ -115,7 +115,6 @@ pub trait Provider {
     /// Process a single iteration of the resource
     async fn unfold(
         &self,
-        identifier: String,
         state: ProviderState,
     ) -> Result<ProviderStep<Self::Step>, ProviderFailure>;
 }
