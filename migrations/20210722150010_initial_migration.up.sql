@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS provider_resource(
   destination TEXT NOT NULL,
   name TEXT NOT NULL,
   enabled BOOLEAN DEFAULT True,
+  -- the url for the scraped page
+  url TEXT NOT NULL,
   priority INTEGER NOT NULL DEFAULT 5 CHECK(priority >= 1 AND priority <= 10),
   last_scrape TIMESTAMP WITHOUT TIME ZONE NULL,
   UNIQUE(destination, name)

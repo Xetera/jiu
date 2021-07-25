@@ -83,6 +83,7 @@ impl Provider for PinterestBoardFeed {
             Some(_date) => MAXIMUM_PAGE_SIZE,
         })
     }
+
     fn from_provider_destination(
         &self,
         scrape_id: String,
@@ -137,6 +138,7 @@ impl Provider for PinterestBoardFeed {
                     post_date: None,
                     reference_url: pin.rich_summary.clone().map(|sum| sum.url),
                     unique_identifier: pin.id.to_owned(),
+                    provider_metadata: None,
                 })
             })
             .collect::<Vec<ProviderMedia>>();

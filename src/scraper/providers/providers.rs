@@ -8,7 +8,6 @@ use log::error;
 use reqwest::StatusCode;
 use serde;
 use serde::{Deserialize, Serialize};
-use sqlx;
 use std::{collections::HashSet, ops::Add, time::Duration};
 use strum_macros;
 use strum_macros::EnumString;
@@ -23,6 +22,10 @@ pub struct ProviderMedia {
     // where the image is coming from
     pub reference_url: Option<String>,
     pub unique_identifier: String,
+    /// necessary for some providers like weverse which include additional
+    /// metadata that are unique to the provider being scraped
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_metadata: Option<serde_json::Value>,
 }
 
 #[derive(Debug)]

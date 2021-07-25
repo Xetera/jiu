@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use bimap::{BiHashMap, BiMap};
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use log::info;
@@ -8,12 +9,11 @@ use reqwest::Client;
 use rsa::{PaddingScheme, PublicKey, RSAPublicKey};
 use serde::{Deserialize, Serialize};
 use sha1::Sha1;
-use std::{env, sync::Arc, time::Instant};
-use url::UrlQuery;
+use std::{env, iter::FromIterator, sync::Arc, time::Instant};
 
 use crate::{
     request::{parse_successful_response, request_default_headers},
-    scraper::ProviderResult,
+    scraper::{ProviderMedia, ProviderResult},
 };
 
 use super::{
@@ -129,9 +129,17 @@ pub struct WeversePhoto {
     org_img_url: String,
     post_id: u64,
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WeverseCommunity {
+    id: u32,
+}
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WeversePost {
+    id: u64,
+    community: WeverseCommunity,
     photos: Vec<WeversePhoto>,
     created_at: DateTime<Utc>,
 }
@@ -148,6 +156,22 @@ pub struct WeversePage {
 pub struct WeverseArtistFeed {
     pub client: Arc<Client>,
     pub access_token: Option<String>,
+}
+
+lazy_static! {
+    static ref ARTIST_MAPPINGS: BiMap<u32, &'static str> =
+        BiHashMap::from_iter([(14, "dreamcatcher"), (10, "sunmi")]);
+}
+
+fn url_from_post(artist_id: u32, post_id: u64, photo_id: u64) -> String {
+    let artist_name = ARTIST_MAPPINGS
+        .get_by_left(&artist_id)
+        .expect(&format!("Weverse ID {} is not a valid mapping", artist_id));
+    format!(
+        "https://weverse.io/{}/artist/{}?photoId={}",
+        artist_name, post_id, photo_id
+    )
+    .to_owned()
 }
 
 #[async_trait]
@@ -182,6 +206,10 @@ impl Provider for WeverseArtistFeed {
         Ok(ScrapeUrl(next_url.as_str().to_owned()))
     }
 
+    fn max_pagination(&self) -> u16 {
+        2
+    }
+
     async fn unfold(&self, state: ProviderState) -> Result<ProviderStep, ProviderFailure> {
         match &self.access_token {
             None => {
@@ -192,6 +220,7 @@ impl Provider for WeverseArtistFeed {
                 Ok(ProviderStep::NotInitialized)
             }
             Some(token) => {
+                println!("Scraping {}", state.url.0);
                 let instant = Instant::now();
                 let response = self
                     .client
@@ -201,10 +230,45 @@ impl Provider for WeverseArtistFeed {
                     .send()
                     .await?;
 
+                let response_code = response.status();
                 let response_json = parse_successful_response::<WeversePage>(response).await?;
-                println!("{:?}", response_json);
                 let response_delay = instant.elapsed();
-                todo!()
+                let images = response_json
+                    .posts
+                    .into_iter()
+                    .flat_map(move |post| {
+                        post.photos
+                            .iter()
+                            .map(|photo| {
+                                let page_url = url_from_post(post.community.id, post.id, photo.id);
+                                ProviderMedia {
+                                    // should be unique across all of weverse
+                                    unique_identifier: photo.id.to_string(),
+                                    post_date: Some(post.created_at),
+                                    image_url: photo.org_img_url.clone(),
+                                    page_url: Some(page_url.clone()),
+                                    reference_url: Some(page_url.clone()),
+                                    provider_metadata: None,
+                                }
+                            })
+                            // not sure why I have to do this here
+                            .collect::<Vec<ProviderMedia>>()
+                    })
+                    .collect::<Vec<ProviderMedia>>();
+                let has_more = !response_json.is_ended;
+                let result = ProviderResult {
+                    images,
+                    response_code,
+                    response_delay,
+                };
+                if has_more {
+                    return Ok(ProviderStep::Next(
+                        result,
+                        Pagination::NextCursor(response_json.last_id.to_string()),
+                    ));
+                }
+                Ok(ProviderStep::End(result))
+                // todo!()
             }
         }
     }

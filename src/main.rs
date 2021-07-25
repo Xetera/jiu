@@ -28,18 +28,6 @@ struct Context {
     weverse_access_token: Option<String>,
 }
 
-fn get_provider(p: AllProviders, client: Arc<Client>, ctx: &Context) -> Box<impl Provider> {
-    match p {
-        // AllProviders::PinterestBoardFeed => Box::new(PinterestBoardFeed { client }),
-        AllProviders::WeverseArtistFeed | AllProviders::PinterestBoardFeed => {
-            Box::new(WeverseArtistFeed {
-                client,
-                access_token: ctx.weverse_access_token.clone(),
-            })
-        }
-    }
-}
-
 async fn iter(
     ctx: &Context,
     pending: PendingProvider,
@@ -52,17 +40,17 @@ async fn iter(
         latest_data,
         last_scrape: pending.last_scrape,
     };
-    let result = dbg!(scrape(&sp, &*provider, &step).await?);
+    let result = (scrape(&sp, &*provider, &step).await?);
     println!("Scraped");
-    // let processed_scrape = process_scrape(&ctx.db, &result).await?;
+    let processed_scrape = process_scrape(&ctx.db, &result).await?;
 
-    // println!("Processed scrape");
-    // let webhooks = webhooks_for_provider(&ctx.db, &sp).await?;
-    // println!("Got webhooks");
-    // let webhook_interactions = dispatch_webhooks(&result, webhooks).await;
-    // println!("Dispatched webhooks");
-    // submit_webhook_responses(&ctx.db, processed_scrape, webhook_interactions).await?;
-    // println!("Submitted webhook reasponse");
+    println!("Processed scrape");
+    let webhooks = webhooks_for_provider(&ctx.db, &sp).await?;
+    println!("Got webhooks");
+    let webhook_interactions = dispatch_webhooks(&result, webhooks).await;
+    println!("Dispatched webhooks");
+    submit_webhook_responses(&ctx.db, processed_scrape, webhook_interactions).await?;
+    println!("Submitted webhook responses");
     Ok(())
 }
 

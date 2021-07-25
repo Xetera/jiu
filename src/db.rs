@@ -85,11 +85,6 @@ pub async fn process_scrape<'a>(
     scrape: &Scrape<'a>,
 ) -> anyhow::Result<ProcessedScrape> {
     let mut tx = db.begin().await?;
-    println!(
-        "{:?}, {:?}",
-        scrape.provider.name.to_string(),
-        scrape.provider.destination
-    );
     let out = sqlx::query!(
         "INSERT INTO scrape (provider_name, provider_destination) VALUES ($1, $2) returning id",
         scrape.provider.name.to_string(),
@@ -98,16 +93,13 @@ pub async fn process_scrape<'a>(
     .fetch_one(&mut tx)
     .await?;
     // we don't really care about making sure this is completely correct
-    // if let Some(request) = scrape.requests.last() {
-    //     sqlx::query!(
-    //         "UPDATE provider_resource SET last_scrape = $1 WHERE name = $2 AND destination = $3",
-    //         request.date.naive_utc(),
-    //         scrape.provider.name.to_string(),
-    //         scrape.provider.destination,
-    //     )
-    //     .fetch_one(db)
-    //     .await?;
-    // }
+    sqlx::query!(
+        "UPDATE provider_resource SET last_scrape = NOW() WHERE name = $1 AND destination = $2 RETURNING *",
+        scrape.provider.name.to_string(),
+        scrape.provider.destination,
+    )
+    .fetch_one(db)
+    .await?;
     let scrape_id = out.id;
 
     for (i, request) in scrape.requests.iter().enumerate() {

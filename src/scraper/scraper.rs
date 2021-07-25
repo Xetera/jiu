@@ -6,7 +6,6 @@ use crate::scraper::ProviderMedia;
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use log::info;
-use serde::Serialize;
 
 #[derive(Debug)]
 pub struct Scrape<'a> {
