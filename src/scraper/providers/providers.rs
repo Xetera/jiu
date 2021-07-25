@@ -2,6 +2,8 @@ use super::{PageSize, ScrapeUrl};
 use crate::request::HttpError;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use dyn_clone::DynClone;
+use enum_map::Enum;
 use log::error;
 use reqwest::StatusCode;
 use serde;
@@ -55,6 +57,8 @@ impl Add<ProviderResult> for ProviderResult {
 pub enum ProviderStep {
     Next(ProviderResult, Pagination),
     End(ProviderResult),
+    // Provider exits gracefully
+    NotInitialized,
 }
 
 #[derive(Error, Debug)]
@@ -106,7 +110,7 @@ impl Pagination {
 /// Providers represent a generic endpoint on a single platform that can be scraped
 /// with a unique identifier for each specific resource
 #[async_trait]
-pub trait Provider: Sync + Clone + Sized {
+pub trait Provider: Sync + DynClone {
     /// a string that uniquely identifies this provider
     fn id(&self) -> AllProviders;
     /// The page size that should be used when scraping
@@ -137,13 +141,13 @@ pub trait Provider: Sync + Clone + Sized {
 }
 
 #[derive(
-    Debug, Copy, Clone, Serialize, EnumString, strum_macros::ToString, PartialEq, Eq, sqlx::Type,
+    Debug, Copy, Clone, Serialize, EnumString, Enum, strum_macros::ToString, PartialEq, Eq,
 )]
 pub enum AllProviders {
     #[strum(serialize = "pinterest.board_feed")]
     PinterestBoardFeed,
-    #[strum(serialize = "twitter.timeline")]
-    TwitterTimeline,
+    #[strum(serialize = "weverse.artist_feed")]
+    WeverseArtistFeed,
 }
 
 // impl FromStr for AllProviders {}

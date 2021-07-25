@@ -1,6 +1,6 @@
 mod providers;
 pub use providers::{
-    AllProviders, PinterestBoardFeed, Provider, ProviderFailure, ProviderMedia, ProviderResult,
-    ScopedProvider, ScrapeRequestInput,
+    fetch_weverse_auth_token, AllProviders, PinterestBoardFeed, Provider, ProviderFailure,
+    ProviderMedia, ProviderResult, ScopedProvider, ScrapeRequestInput, WeverseArtistFeed,
 };
 pub mod scraper;

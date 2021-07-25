@@ -4,3 +4,4 @@
 .vscode
 env.toml
 seed.sql
+.env

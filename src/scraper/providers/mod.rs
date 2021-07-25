@@ -4,6 +4,8 @@ pub mod weverse;
 use chrono::{DateTime, Utc};
 pub use pinterest_board_feed::*;
 pub use providers::*;
+pub use weverse::fetch_weverse_auth_token;
+pub use weverse::WeverseArtistFeed;
 
 /// A scrape url is only transparently available to providers
 #[derive(Debug, Clone)]

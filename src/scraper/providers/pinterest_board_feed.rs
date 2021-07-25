@@ -115,7 +115,6 @@ impl Provider for PinterestBoardFeed {
         let instant = Instant::now();
         let response = self
             .client
-            // I'm so sorry
             .get(&state.url.0)
             .headers(request_default_headers())
             .send()

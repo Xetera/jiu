@@ -24,6 +24,7 @@ pub struct ScrapeRequest {
 enum InternalScraperStep {
     Data(ProviderResult),
     Error(ProviderFailure),
+    Exit,
 }
 
 #[derive(Debug)]
@@ -39,7 +40,7 @@ pub async fn scrape<'a>(
     input: &ScrapeRequestInput,
 ) -> Result<Scrape<'a>, ProviderFailure> {
     let page_size = scrape.estimated_page_size(input.last_scrape);
-    let url = scrape.clone().from_provider_destination(
+    let url = dyn_clone::clone_box(&*scrape).from_provider_destination(
         sp.destination.clone(),
         page_size.to_owned(),
         None,
@@ -52,8 +53,9 @@ pub async fn scrape<'a>(
                 // we have to indicate an error to the consumer and stop iteration on the next cycle
                 Err(err) => (InternalScraperStep::Error(err), None),
                 Ok(ProviderStep::End(result)) => (InternalScraperStep::Data(result), None),
+                Ok(ProviderStep::NotInitialized) => (InternalScraperStep::Exit, None),
                 Ok(ProviderStep::Next(result, response_json)) => {
-                    let maybe_next_url = scrape.clone().from_provider_destination(
+                    let maybe_next_url = dyn_clone::clone_box(&*scrape).from_provider_destination(
                         sp.destination.clone(),
                         page_size.to_owned(),
                         Some(response_json),
@@ -74,6 +76,7 @@ pub async fn scrape<'a>(
     while let Some(step) = steps.next().await {
         let date = Utc::now();
         match step {
+            InternalScraperStep::Exit => {}
             InternalScraperStep::Error(error) => {
                 scrape_requests.push(ScrapeRequest {
                     date,

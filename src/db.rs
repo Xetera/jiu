@@ -63,19 +63,21 @@ pub struct ProcessedScrape {
 }
 
 pub async fn pending_scrapes(db: &Database) -> anyhow::Result<Vec<PendingProvider>> {
-    Ok(sqlx::query!("SELECT * FROM provider_resource")
-        .map(|row| PendingProvider {
-            provider: ScopedProvider {
-                destination: row.destination,
-                name: AllProviders::from_str(&row.name).expect(&format!(
-                    "Got {} from the database which is not a valid provider name",
-                    &row.name
-                )),
-            },
-            last_scrape: row.last_scrape.map(|r| DateTime::from_utc(r, Utc)),
-        })
-        .fetch_all(db)
-        .await?)
+    Ok(
+        sqlx::query!("SELECT * FROM provider_resource WHERE enabled = True")
+            .map(|row| PendingProvider {
+                provider: ScopedProvider {
+                    destination: row.destination,
+                    name: AllProviders::from_str(&row.name).expect(&format!(
+                        "Got {} from the database which is not a valid provider name",
+                        &row.name
+                    )),
+                },
+                last_scrape: row.last_scrape.map(|r| DateTime::from_utc(r, Utc)),
+            })
+            .fetch_all(db)
+            .await?,
+    )
 }
 
 pub async fn process_scrape<'a>(
