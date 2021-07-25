@@ -131,7 +131,7 @@ pub trait Provider: Sync + DynClone {
     /// Provider destination are any unique identifier a provider can try to resolve into an opaque [ScrapeUrl`].
     /// This method is called after every successful scrape to resolve the next page of media
     fn from_provider_destination(
-        self,
+        &self,
         id: String,
         page_size: PageSize,
         pagination: Option<Pagination>,

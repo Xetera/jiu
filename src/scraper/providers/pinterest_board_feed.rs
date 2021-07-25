@@ -84,7 +84,7 @@ impl Provider for PinterestBoardFeed {
         })
     }
     fn from_provider_destination(
-        self,
+        &self,
         scrape_id: String,
         page_size: PageSize,
         pagination: Option<Pagination>,

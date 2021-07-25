@@ -40,9 +40,12 @@ fn get_provider(p: AllProviders, client: Arc<Client>, ctx: &Context) -> Box<impl
     }
 }
 
-async fn iter(ctx: &Context, pending: PendingProvider) -> anyhow::Result<()> {
+async fn iter(
+    ctx: &Context,
+    pending: PendingProvider,
+    provider: &dyn Provider,
+) -> anyhow::Result<()> {
     let sp = pending.provider;
-    let provider = get_provider(sp.name, Arc::clone(&ctx.client), &ctx);
     let latest_data = dbg!(latest_media_ids_from_provider(&ctx.db, &sp).await?);
 
     let step = ScrapeRequestInput {
@@ -77,13 +80,18 @@ async fn run() -> Result<(), Box<dyn Error>> {
     };
     stream::iter(pending_providers)
         .for_each_concurrent(PROVIDER_PROCESSING_LIMIT, |sp| async {
-            match iter(&ctx, sp).await {
-                Ok(a) => {}
-                Err(error) => {
-                    println!("{:?}", error)
-                }
+            let client = Arc::clone(&client);
+            let provider: Box<dyn Provider> = match &sp.provider.name {
+                AllProviders::PinterestBoardFeed => Box::new(PinterestBoardFeed { client }),
+                AllProviders::WeverseArtistFeed => Box::new(WeverseArtistFeed {
+                    client,
+                    access_token: ctx.weverse_access_token.clone(),
+                }),
+            };
+            match iter(&ctx, sp, &*provider).await {
+                Err(err) => eprintln!("{:?}", err),
+                Ok(_) => {}
             }
-            ()
         })
         .await;
     Ok(())

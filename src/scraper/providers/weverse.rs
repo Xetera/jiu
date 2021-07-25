@@ -161,7 +161,7 @@ impl Provider for WeverseArtistFeed {
     }
 
     fn from_provider_destination(
-        self,
+        &self,
         id: String,
         _page_size: super::PageSize,
         pagination: Option<Pagination>,

@@ -36,15 +36,12 @@ pub enum ScraperStep {
 
 pub async fn scrape<'a>(
     sp: &'a ScopedProvider,
-    scrape: &impl Provider,
+    scrape: &dyn Provider,
     input: &ScrapeRequestInput,
 ) -> Result<Scrape<'a>, ProviderFailure> {
     let page_size = scrape.estimated_page_size(input.last_scrape);
-    let url = dyn_clone::clone_box(&*scrape).from_provider_destination(
-        sp.destination.clone(),
-        page_size.to_owned(),
-        None,
-    )?;
+    let url =
+        scrape.from_provider_destination(sp.destination.clone(), page_size.to_owned(), None)?;
     let seed = ProviderState { url: url };
     let mut steps = futures::stream::unfold(Some(seed), |state| async {
         match state {
@@ -55,7 +52,7 @@ pub async fn scrape<'a>(
                 Ok(ProviderStep::End(result)) => (InternalScraperStep::Data(result), None),
                 Ok(ProviderStep::NotInitialized) => (InternalScraperStep::Exit, None),
                 Ok(ProviderStep::Next(result, response_json)) => {
-                    let maybe_next_url = dyn_clone::clone_box(&*scrape).from_provider_destination(
+                    let maybe_next_url = scrape.from_provider_destination(
                         sp.destination.clone(),
                         page_size.to_owned(),
                         Some(response_json),
