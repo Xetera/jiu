@@ -152,11 +152,3 @@ pub enum AllProviders {
     #[strum(serialize = "weverse.artist_feed")]
     WeverseArtistFeed,
 }
-
-// impl FromStr for AllProviders {}
-
-// impl std::fmt::Display for AllProviders {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         f.write_str(&serde_json::to_string(self).unwrap())
-//     }
-// }

@@ -127,6 +127,9 @@ pub async fn fetch_weverse_auth_token(client: &Client) -> anyhow::Result<Option<
 pub struct WeversePhoto {
     id: u64,
     org_img_url: String,
+    org_img_height: u32,
+    org_img_width: u32,
+    thumbnail_img_url: String,
     post_id: u64,
 }
 
@@ -142,6 +145,13 @@ pub struct WeversePost {
     community: WeverseCommunity,
     photos: Vec<WeversePhoto>,
     created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WeverseMetadata {
+    height: u32,
+    width: u32,
+    thumbnail_url: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -248,7 +258,12 @@ impl Provider for WeverseArtistFeed {
                                     image_url: photo.org_img_url.clone(),
                                     page_url: Some(page_url.clone()),
                                     reference_url: Some(page_url.clone()),
-                                    provider_metadata: None,
+                                    provider_metadata: serde_json::to_value(WeverseMetadata {
+                                        height: photo.org_img_height,
+                                        width: photo.org_img_width,
+                                        thumbnail_url: photo.thumbnail_img_url.clone(),
+                                    })
+                                    .map_or_else(|_err| None, |data| Some(data)),
                                 }
                             })
                             // not sure why I have to do this here
