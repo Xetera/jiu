@@ -31,7 +31,7 @@ pub async fn latest_media_ids_from_provider(
     let out = sqlx::query!(
         "SELECT unique_identifier FROM media
         WHERE provider_name = $1 AND provider_destination = $2
-        order by discovered_at desc, id limit 10",
+        order by discovered_at, id limit 10",
         provider.name.to_string(),
         provider.destination
     )

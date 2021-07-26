@@ -1,6 +1,8 @@
 pub mod pinterest_board_feed;
 mod providers;
 pub mod weverse;
+use std::fmt::Display;
+
 pub use pinterest_board_feed::*;
 pub use providers::*;
 pub use weverse::fetch_weverse_auth_token;
@@ -20,4 +22,10 @@ pub struct PageSize(usize);
 pub struct ScopedProvider {
     pub name: AllProviders,
     pub destination: String,
+}
+
+impl Display for ScopedProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&format!("{}:{}", self.name.to_string(), self.destination))
+    }
 }

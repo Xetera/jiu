@@ -1,4 +1,7 @@
+use std::fmt::{Display, Write};
+
 use chrono::{DateTime, NaiveDateTime, Utc};
+use futures::future::Join;
 
 use crate::scraper::ScopedProvider;
 
@@ -21,4 +24,10 @@ pub struct DatabaseWebhookSource {
 pub struct PendingProvider {
     pub provider: ScopedProvider,
     pub last_scrape: Option<DateTime<Utc>>,
+}
+
+impl Display for PendingProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&format!("{}", self.provider))
+    }
 }

@@ -21,7 +21,7 @@ dotenv = "0.15.0"
 log = "0.4.0"
 env_logger = "0.8.4"
 anyhow = "1.0.42"
-strum = "0.21.0"
+strum = { version = "0.21.0", features = ["derive"] }
 strum_macros = "0.21.1"
 rsa = "0.4.0"
 sha-1 = "0.9.7"

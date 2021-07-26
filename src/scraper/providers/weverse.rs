@@ -122,7 +122,7 @@ pub async fn fetch_weverse_auth_token(client: &Client) -> anyhow::Result<Option<
         }
     }
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WeversePhoto {
     id: u64,
@@ -135,20 +135,27 @@ pub struct WeversePhoto {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WeverseCommunity {
-    id: u32,
-}
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct WeversePost {
     id: u64,
-    community: WeverseCommunity,
-    photos: Vec<WeversePhoto>,
+    // community: WeverseCommunity,
+    community_user: WeverseCommunityUser,
+    photos: Option<Vec<WeversePhoto>>,
     created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WeverseCommunityUser {
+    community_id: u32,
+    artist_id: u32,
+    profile_img_path: String,
+    profile_nickname: String,
 }
 
 #[derive(Debug, Serialize)]
 pub struct WeverseMetadata {
+    author_id: u32,
+    author_name: String,
     height: u32,
     width: u32,
     thumbnail_url: String,
@@ -245,20 +252,29 @@ impl Provider for WeverseArtistFeed {
                 let images = response_json
                     .posts
                     .into_iter()
-                    .flat_map(move |post| {
-                        post.photos
-                            .iter()
+                    .flat_map(|post| {
+                        let community_id = post.community_user.community_id.to_owned();
+                        let post_id = post.id;
+                        let user = post.community_user;
+                        let author_name = user.profile_nickname;
+                        let author_id = user.artist_id;
+                        let post_created_at = post.created_at;
+                        let photos = post.photos.unwrap_or(vec![]);
+                        photos
+                            .into_iter()
                             .map(|photo| {
-                                let page_url = url_from_post(post.community.id, post.id, photo.id);
+                                let page_url = url_from_post(community_id, post_id, photo.id);
                                 ProviderMedia {
                                     // should be unique across all of weverse
                                     _type: ProviderMediaType::Image,
                                     unique_identifier: photo.id.to_string(),
-                                    post_date: Some(post.created_at),
+                                    post_date: Some(post_created_at),
                                     media_url: photo.org_img_url.clone(),
                                     page_url: Some(page_url.clone()),
                                     reference_url: Some(page_url.clone()),
                                     provider_metadata: serde_json::to_value(WeverseMetadata {
+                                        author_id,
+                                        author_name: author_name.clone(),
                                         height: photo.org_img_height,
                                         width: photo.org_img_width,
                                         thumbnail_url: photo.thumbnail_img_url.clone(),

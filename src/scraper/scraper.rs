@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use super::{
     providers::{Provider, ProviderFailure, ProviderState, ProviderStep, ScrapeRequestInput},
     ProviderResult, ScopedProvider,
@@ -46,7 +48,7 @@ pub async fn scrape<'a>(
         match state {
             None => None,
             Some(state) => {
-                debug!("Scraping URL: {:?}", state.url);
+                debug!("Scraping URL: {:?}", state.url.0);
                 Some(match scrape.unfold(state).await {
                     // we have to indicate an error to the consumer and stop iteration on the next cycle
                     Err(err) => (InternalScraperStep::Error(err), None),
@@ -72,6 +74,7 @@ pub async fn scrape<'a>(
     })
     .boxed_local();
     let mut scrape_requests: Vec<ScrapeRequest> = vec![];
+    let scrape_start = Instant::now();
     while let Some(step) = steps.next().await {
         let date = Utc::now();
         match step {
@@ -92,24 +95,24 @@ pub async fn scrape<'a>(
                     .take_while(|r| !input.latest_data.contains(&r.unique_identifier))
                     .collect::<Vec<ProviderMedia>>();
                 let new_image_count = images.len();
+                debug!("Found {} new images in {}", images.len(), sp);
                 scrape_requests.push(ScrapeRequest {
                     date,
-                    step: ScraperStep::Data(page),
+                    step: ScraperStep::Data(ProviderResult { images, ..page }),
                 });
                 let has_known_image = new_image_count != original_image_count;
-                let id = scrape.id().to_string();
                 if has_known_image {
                     info!(
-                        "'{}' has finished crawling because it reached its last known data",
-                        id
+                        "[{}] has finished crawling because it's back to the last scraped data point",
+                        sp
                     );
                     break;
                 }
                 let pagination_limit = scrape.max_pagination();
                 if scrape_requests.len() as u16 > pagination_limit {
                     info!(
-                        "'{}' has reached its pagination limit of {}",
-                        id, pagination_limit
+                        "[{}] has reached its pagination limit of {}",
+                        sp, pagination_limit
                     );
                     break;
                 }
@@ -117,6 +120,14 @@ pub async fn scrape<'a>(
             }
         }
     }
+    let scrape_count = scrape_requests.len();
+    info!(
+        "[{}] finished scraping in {:?} after {} request{}",
+        sp,
+        scrape_start.elapsed(),
+        scrape_count,
+        if scrape_count != 1 { "s" } else { "" }
+    );
     Ok(Scrape {
         provider: sp.to_owned(),
         requests: scrape_requests,

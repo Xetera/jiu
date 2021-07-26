@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS scrape_error(
   -- response_code INTEGER,
   response_body TEXT NOT NULL DEFAULT '',
   response_code TEXT NOT NULL,
+  message TEXT NULL,
   scrape_id INTEGER NOT NULL REFERENCES scrape(id)
 );
 

@@ -12,6 +12,7 @@ use thiserror::Error;
 pub struct ResponseErrorContext {
     pub body: String,
     pub code: StatusCode,
+    pub message: Option<String>,
 }
 
 /// Wrapper for providing actual useful information about
@@ -39,13 +40,16 @@ pub async fn parse_successful_response<T: DeserializeOwned>(
         return Err(HttpError::FailStatus(ResponseErrorContext {
             body: response_body,
             code: response_code,
+            message: None,
         }));
     }
-    serde_json::from_str::<T>(&response_body).map_err(|_error| {
+    serde_json::from_str::<T>(&response_body).map_err(|error| {
+        error!("{:?}", error);
         error!("Failed to parse response from {}", url);
         HttpError::UnexpectedBody(ResponseErrorContext {
             body: response_body,
             code: response_code,
+            message: Some(error.to_string()),
         })
     })
 }
