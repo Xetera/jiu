@@ -9,7 +9,7 @@ pub use weverse::WeverseArtistFeed;
 
 /// A scrape url is only transparently available to providers
 #[derive(Debug, Clone)]
-pub struct ScrapeUrl(String);
+pub struct ScrapeUrl(pub String);
 
 #[derive(Debug, Copy, Clone)]
 pub struct PageSize(usize);

@@ -13,7 +13,7 @@ use std::{env, iter::FromIterator, sync::Arc, time::Instant};
 
 use crate::{
     request::{parse_successful_response, request_default_headers},
-    scraper::{ProviderMedia, ProviderResult},
+    scraper::{providers::ProviderMediaType, ProviderMedia, ProviderResult},
 };
 
 use super::{
@@ -230,7 +230,6 @@ impl Provider for WeverseArtistFeed {
                 Ok(ProviderStep::NotInitialized)
             }
             Some(token) => {
-                println!("Scraping {}", state.url.0);
                 let instant = Instant::now();
                 let response = self
                     .client
@@ -253,6 +252,7 @@ impl Provider for WeverseArtistFeed {
                                 let page_url = url_from_post(post.community.id, post.id, photo.id);
                                 ProviderMedia {
                                     // should be unique across all of weverse
+                                    _type: ProviderMediaType::Image,
                                     unique_identifier: photo.id.to_string(),
                                     post_date: Some(post.created_at),
                                     image_url: photo.org_img_url.clone(),

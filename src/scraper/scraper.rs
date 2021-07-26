@@ -5,7 +5,7 @@ use super::{
 use crate::scraper::ProviderMedia;
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
-use log::info;
+use log::{debug, info};
 
 #[derive(Debug)]
 pub struct Scrape<'a> {
@@ -45,26 +45,29 @@ pub async fn scrape<'a>(
     let mut steps = futures::stream::unfold(Some(seed), |state| async {
         match state {
             None => None,
-            Some(state) => Some(match scrape.unfold(state).await {
-                // we have to indicate an error to the consumer and stop iteration on the next cycle
-                Err(err) => (InternalScraperStep::Error(err), None),
-                Ok(ProviderStep::End(result)) => (InternalScraperStep::Data(result), None),
-                Ok(ProviderStep::NotInitialized) => (InternalScraperStep::Exit, None),
-                Ok(ProviderStep::Next(result, response_json)) => {
-                    let maybe_next_url = scrape.from_provider_destination(
-                        sp.destination.clone(),
-                        page_size.to_owned(),
-                        Some(response_json),
-                    );
-                    match maybe_next_url {
-                        Err(err) => (InternalScraperStep::Error(err), None),
-                        Ok(url) => {
-                            let next_state = ProviderState { url: url.clone() };
-                            (InternalScraperStep::Data(result), Some(next_state))
+            Some(state) => {
+                debug!("Scraping URL: {:?}", state.url);
+                Some(match scrape.unfold(state).await {
+                    // we have to indicate an error to the consumer and stop iteration on the next cycle
+                    Err(err) => (InternalScraperStep::Error(err), None),
+                    Ok(ProviderStep::End(result)) => (InternalScraperStep::Data(result), None),
+                    Ok(ProviderStep::NotInitialized) => (InternalScraperStep::Exit, None),
+                    Ok(ProviderStep::Next(result, response_json)) => {
+                        let maybe_next_url = scrape.from_provider_destination(
+                            sp.destination.clone(),
+                            page_size.to_owned(),
+                            Some(response_json),
+                        );
+                        match maybe_next_url {
+                            Err(err) => (InternalScraperStep::Error(err), None),
+                            Ok(url) => {
+                                let next_state = ProviderState { url: url.clone() };
+                                (InternalScraperStep::Data(result), Some(next_state))
+                            }
                         }
                     }
-                }
-            }),
+                })
+            }
         }
     })
     .boxed_local();

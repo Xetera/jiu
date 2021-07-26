@@ -44,7 +44,7 @@ pub async fn parse_successful_response<T: DeserializeOwned>(
     serde_json::from_str::<T>(&response_body).map_err(|_error| {
         error!("Failed to parse response from {}", url);
         HttpError::UnexpectedBody(ResponseErrorContext {
-            body: dbg!(response_body),
+            body: response_body,
             code: response_code,
         })
     })

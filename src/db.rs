@@ -221,7 +221,6 @@ pub async fn submit_webhook_responses(
             }
         };
         if let Some(code) = status {
-            println!("{:?}", processed_scrape);
             sqlx::query!(
                 "INSERT INTO webhook_invocation (
                     scrape_id,

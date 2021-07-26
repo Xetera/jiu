@@ -1,4 +1,7 @@
-use crate::request::{parse_successful_response, request_default_headers};
+use crate::{
+    request::{parse_successful_response, request_default_headers},
+    scraper::providers::ProviderMediaType,
+};
 
 use super::{
     AllProviders, PageSize, Pagination, Provider, ProviderFailure, ProviderMedia, ProviderResult,
@@ -112,7 +115,6 @@ impl Provider for PinterestBoardFeed {
         Ok(ScrapeUrl(url.as_str().to_owned()))
     }
     async fn unfold(&self, state: ProviderState) -> Result<ProviderStep, ProviderFailure> {
-        println!("Scraping pinterest");
         let instant = Instant::now();
         let response = self
             .client
@@ -131,6 +133,7 @@ impl Provider for PinterestBoardFeed {
             .filter_map(|pin| {
                 // I imagine every image has an "orig" size but we can't know for sure
                 pin.images.get("orig").map(|elem| ProviderMedia {
+                    _type: ProviderMediaType::Image,
                     image_url: elem.url.to_owned(),
                     page_url: Some(format!("https://www.pinterest.com/pin/{}", pin.id)),
                     // yes, pinterest literally does not tell you when things were

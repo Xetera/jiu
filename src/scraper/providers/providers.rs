@@ -13,9 +13,17 @@ use strum_macros;
 use strum_macros::EnumString;
 use thiserror::Error;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ProviderMediaType {
+    Image,
+    Video,
+}
+
 /// Placeholder for images that may contain more metadata in the future?
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderMedia {
+    #[serde(rename = "type")]
+    pub _type: ProviderMediaType,
     pub image_url: String,
     pub page_url: Option<String>,
     pub post_date: Option<DateTime<Utc>>,
