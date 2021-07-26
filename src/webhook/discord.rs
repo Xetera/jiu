@@ -33,7 +33,7 @@ pub const DISCORD_IMAGE_DISPLAY_LIMIT: usize = 8;
 pub fn discord_payload<'a>(media: Vec<&ProviderMedia>) -> DiscordPayload<'a> {
     let media_links = media
         .iter()
-        .map(|embed| embed.image_url.clone())
+        .map(|embed| embed.media_url.clone())
         .collect::<Vec<String>>()
         .join("\n");
     DiscordPayload {

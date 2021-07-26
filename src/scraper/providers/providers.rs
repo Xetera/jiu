@@ -23,7 +23,7 @@ pub enum ProviderMediaType {
 pub struct ProviderMedia {
     #[serde(rename = "type")]
     pub _type: ProviderMediaType,
-    pub image_url: String,
+    pub media_url: String,
     pub page_url: Option<String>,
     pub post_date: Option<DateTime<Utc>>,
     // where the image is coming from

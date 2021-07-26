@@ -134,7 +134,7 @@ impl Provider for PinterestBoardFeed {
                 // I imagine every image has an "orig" size but we can't know for sure
                 pin.images.get("orig").map(|elem| ProviderMedia {
                     _type: ProviderMediaType::Image,
-                    image_url: elem.url.to_owned(),
+                    media_url: elem.url.to_owned(),
                     page_url: Some(format!("https://www.pinterest.com/pin/{}", pin.id)),
                     // yes, pinterest literally does not tell you when things were
                     // pinned. It's so stupid

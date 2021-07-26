@@ -134,7 +134,7 @@ pub async fn process_scrape<'a>(
                         &scrape.provider.name.to_string(),
                         &scrape.provider.destination,
                         scrape_request_row.id,
-                        media.image_url,
+                        media.media_url,
                         media.page_url,
                         media.reference_url,
                         media.unique_identifier,

@@ -255,7 +255,7 @@ impl Provider for WeverseArtistFeed {
                                     _type: ProviderMediaType::Image,
                                     unique_identifier: photo.id.to_string(),
                                     post_date: Some(post.created_at),
-                                    image_url: photo.org_img_url.clone(),
+                                    media_url: photo.org_img_url.clone(),
                                     page_url: Some(page_url.clone()),
                                     reference_url: Some(page_url.clone()),
                                     provider_metadata: serde_json::to_value(WeverseMetadata {
