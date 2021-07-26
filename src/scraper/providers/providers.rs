@@ -1,15 +1,16 @@
-use super::{PageSize, ScrapeUrl};
+use super::{PageSize, ProviderLimiter, ScrapeUrl};
 use crate::request::HttpError;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use dyn_clone::DynClone;
+use governor::{Jitter, Quota};
 use log::error;
+use nonzero_ext::nonzero;
 use reqwest::StatusCode;
 use serde;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, ops::Add, time::Duration};
 use strum_macros;
-use strum_macros::EnumString;
+use strum_macros::{EnumIter, EnumString};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -118,21 +119,44 @@ impl Pagination {
     }
 }
 
+#[async_trait]
+pub trait RateLimitable {
+    fn quota() -> Quota
+    where
+        Self: Sized,
+    {
+        default_quota()
+    }
+    fn rate_limiter() -> ProviderLimiter
+    where
+        Self: Sized,
+    {
+        ProviderLimiter::direct(Self::quota())
+    }
+    /// Not all rate limiters will be keyless. We need key to always be
+    /// available even if it's not being used
+    async fn wait(&self, key: &str) -> ();
+}
+
+pub fn default_quota() -> Quota {
+    Quota::per_minute(nonzero!(40u32)).allow_burst(nonzero!(5u32))
+}
+
+pub fn default_jitter() -> Jitter {
+    Jitter::up_to(Duration::from_secs(2))
+}
+
 /// Providers represent a generic endpoint on a single platform that can be scraped
 /// with a unique identifier for each specific resource
 #[async_trait]
-pub trait Provider: Sync + DynClone {
+pub trait Provider: Sync + RateLimitable {
     /// a string that uniquely identifies this provider
     fn id(&self) -> AllProviders;
     /// The page size that should be used when scraping
     /// Destinations that haven't been scraped before should be using a larger
     /// page size.
     /// iteration is 0 indexed
-    fn estimated_page_size(
-        &self,
-        last_scraped: Option<DateTime<Utc>>,
-        iteration: usize,
-    ) -> PageSize;
+    fn next_page_size(&self, last_scraped: Option<DateTime<Utc>>, iteration: usize) -> PageSize;
     /// The maximum number of times a resource can be paginated before exiting.
     /// This value is ignored if the context has no images aka the resource
     /// is being scraped for the first time
@@ -156,7 +180,9 @@ pub trait Provider: Sync + DynClone {
     async fn unfold(&self, state: ProviderState) -> Result<ProviderStep, ProviderFailure>;
 }
 
-#[derive(Debug, Copy, Clone, Serialize, EnumString, strum_macros::ToString, PartialEq, Eq)]
+#[derive(
+    Debug, Hash, Copy, Clone, Serialize, EnumString, EnumIter, strum_macros::ToString, PartialEq, Eq,
+)]
 pub enum AllProviders {
     #[strum(serialize = "pinterest.board_feed")]
     PinterestBoardFeed,

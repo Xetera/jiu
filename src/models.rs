@@ -1,9 +1,6 @@
-use std::fmt::{Display, Write};
-
-use chrono::{DateTime, NaiveDateTime, Utc};
-use futures::future::Join;
-
 use crate::scraper::ScopedProvider;
+use chrono::{DateTime, NaiveDateTime, Utc};
+use std::fmt::Display;
 
 #[derive(Debug)]
 pub struct DatabaseWebhook {

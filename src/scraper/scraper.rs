@@ -41,7 +41,7 @@ pub async fn scrape<'a>(
     input: &ScrapeRequestInput,
 ) -> Result<Scrape<'a>, ProviderFailure> {
     let initial_iteration = 0;
-    let page_size = scrape.estimated_page_size(input.last_scrape, initial_iteration);
+    let page_size = scrape.next_page_size(input.last_scrape, initial_iteration);
     let url =
         scrape.from_provider_destination(sp.destination.clone(), page_size.to_owned(), None)?;
     let seed = ProviderState {
@@ -60,7 +60,7 @@ pub async fn scrape<'a>(
                     Ok(ProviderStep::End(result)) => (InternalScraperStep::Data(result), None),
                     Ok(ProviderStep::NotInitialized) => (InternalScraperStep::Exit, None),
                     Ok(ProviderStep::Next(result, response_json)) => {
-                        let page_size = scrape.estimated_page_size(input.last_scrape, iteration);
+                        let page_size = scrape.next_page_size(input.last_scrape, iteration);
                         let maybe_next_url = scrape.from_provider_destination(
                             sp.destination.clone(),
                             page_size.to_owned(),

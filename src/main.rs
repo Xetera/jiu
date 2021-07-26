@@ -7,7 +7,7 @@ use jiu::{
     models::PendingProvider,
     scraper::{
         fetch_weverse_auth_token, scraper::scrape, AllProviders, PinterestBoardFeed, Provider,
-        ScrapeRequestInput, WeverseArtistFeed,
+        RateLimitable, ScrapeRequestInput, WeverseArtistFeed,
     },
     webhook::dispatcher::dispatch_webhooks,
 };
@@ -15,7 +15,8 @@ use lazy_static::lazy_static;
 use log::{debug, info};
 use reqwest::Client;
 use sqlx::{Pool, Postgres};
-use std::{error::Error, sync::Arc};
+use std::{collections::HashMap, error::Error, iter::FromIterator, sync::Arc};
+use strum::IntoEnumIterator;
 
 const PROVIDER_PROCESSING_LIMIT: usize = 8;
 
@@ -65,17 +66,29 @@ async fn run() -> Result<(), Box<dyn Error>> {
         db,
         weverse_access_token: access_token,
     };
-    stream::iter(pending_providers)
-        .for_each_concurrent(PROVIDER_PROCESSING_LIMIT, |sp| async {
+    let provider_map: HashMap<AllProviders, Box<dyn Provider>> =
+        HashMap::from_iter(AllProviders::iter().map(|iter| {
             let client = Arc::clone(&client);
-            let provider: Box<dyn Provider> = match &sp.provider.name {
-                AllProviders::PinterestBoardFeed => Box::new(PinterestBoardFeed { client }),
+            let provider: Box<dyn Provider> = match &iter {
+                AllProviders::PinterestBoardFeed => Box::new(PinterestBoardFeed {
+                    client,
+                    rate_limiter: PinterestBoardFeed::rate_limiter(),
+                }),
                 AllProviders::WeverseArtistFeed => Box::new(WeverseArtistFeed {
                     client,
                     access_token: ctx.weverse_access_token.clone(),
+                    rate_limiter: WeverseArtistFeed::rate_limiter(),
                 }),
             };
-            match iter(&ctx, sp, &*provider).await {
+            (iter, provider)
+        }));
+    stream::iter(pending_providers)
+        .for_each_concurrent(PROVIDER_PROCESSING_LIMIT, |sp| async {
+            let provider = provider_map.get(&sp.provider.name).expect(&format!(
+                "Tried to get a provider that doesn't exist {}",
+                &sp.provider,
+            ));
+            match iter(&ctx, sp, &**provider).await {
                 Err(err) => eprintln!("{:?}", err),
                 Ok(_) => {}
             }

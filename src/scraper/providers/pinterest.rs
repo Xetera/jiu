@@ -1,11 +1,10 @@
+use super::{
+    default_jitter, AllProviders, PageSize, Pagination, Provider, ProviderFailure, ProviderLimiter,
+    ProviderMedia, ProviderResult, ProviderState, ProviderStep, RateLimitable, ScrapeUrl,
+};
 use crate::{
     request::{parse_successful_response, request_default_headers},
     scraper::providers::ProviderMediaType,
-};
-
-use super::{
-    AllProviders, PageSize, Pagination, Provider, ProviderFailure, ProviderMedia, ProviderResult,
-    ProviderState, ProviderStep, ScrapeUrl,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -58,9 +57,10 @@ struct PinterestRequestDict<'a> {
     options: PinterestRequestDictOptions<'a>,
 }
 
-#[derive(Clone)]
+// #[derive(Clone)]
 pub struct PinterestBoardFeed {
     pub client: Arc<Client>,
+    pub rate_limiter: ProviderLimiter,
 }
 
 const PINTEREST_BOARD_SEPARATOR: &str = "|";
@@ -70,7 +70,17 @@ const URL_ROOT: &str = "https://www.pinterest.com/resource/BoardFeedResource/get
 const MAXIMUM_PAGE_SIZE: usize = 200;
 
 /// pinterest uses a page size of 25
+#[allow(dead_code)]
 const PROVIDER_NATIVE_PAGE_SIZE: usize = 25;
+
+#[async_trait]
+impl RateLimitable for PinterestBoardFeed {
+    async fn wait(&self, _key: &str) -> () {
+        self.rate_limiter
+            .until_ready_with_jitter(default_jitter())
+            .await;
+    }
+}
 
 // PinterestBoard ids are made up of 2 pieces, board_url and board_id formatted in this way
 // "board_id|board_url"
@@ -79,11 +89,7 @@ impl Provider for PinterestBoardFeed {
     fn id(&self) -> AllProviders {
         AllProviders::PinterestBoardFeed
     }
-    fn estimated_page_size(
-        &self,
-        last_scraped: Option<DateTime<Utc>>,
-        _iteration: usize,
-    ) -> PageSize {
+    fn next_page_size(&self, last_scraped: Option<DateTime<Utc>>, _iteration: usize) -> PageSize {
         PageSize(match last_scraped {
             // TODO: fix
             None => MAXIMUM_PAGE_SIZE,

@@ -1,3 +1,383 @@
 {
-  "db": "PostgreSQL"
+  "db": "PostgreSQL",
+  "02c2cc08aac3620a973bbf9c1bf479fda921d0027fefaeb2b19183520d1c8a8b": {
+    "query": "INSERT INTO scrape_error (scrape_id, response_code, response_body)\n                            VALUES ($1, $2, $3) returning id",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int4",
+          "Text",
+          "Text"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
+  "25359ffca4f7cade44294de48b76c5097a79550758938f7f4ade631f43146b91": {
+    "query": "INSERT INTO media (\n                            provider_name,\n                            provider_destination,\n                            scrape_request_id,\n                            image_url,\n                            page_url,\n                            reference_url,\n                            unique_identifier,\n                            posted_at,\n                            discovered_at\n                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)\n                        ON CONFLICT DO NOTHING returning *",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "provider_name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 2,
+          "name": "provider_destination",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 3,
+          "name": "scrape_request_id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 4,
+          "name": "image_url",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 5,
+          "name": "page_url",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 6,
+          "name": "reference_url",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 7,
+          "name": "unique_identifier",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 8,
+          "name": "posted_at",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 9,
+          "name": "discovered_at",
+          "type_info": "Timestamp"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text",
+          "Int4",
+          "Text",
+          "Text",
+          "Text",
+          "Text",
+          "Timestamp",
+          "Timestamp"
+        ]
+      },
+      "nullable": [
+        false,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        false,
+        true,
+        false
+      ]
+    }
+  },
+  "3498bbad8c09b9776e337a850b351babb562fa6b41fc47470d6cdab54063374c": {
+    "query": "INSERT INTO scrape (provider_name, provider_destination) VALUES ($1, $2) returning id",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
+  "65e8fb5adf1849d3e0ad897c225b6eb50cabb59246dfc6c34e124fc77553ae52": {
+    "query": "INSERT INTO webhook_invocation (\n                    scrape_id,\n                    webhook_id,\n                    response_code,\n                    response_delay\n                ) VALUES ($1, $2, $3, $4) RETURNING *",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "scrape_id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 2,
+          "name": "webhook_id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 3,
+          "name": "response_code",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 4,
+          "name": "response_delay",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 5,
+          "name": "invoked_at",
+          "type_info": "Timestamptz"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int4",
+          "Int4",
+          "Int4",
+          "Int4"
+        ]
+      },
+      "nullable": [
+        false,
+        true,
+        true,
+        true,
+        true,
+        false
+      ]
+    }
+  },
+  "9edd53013cf08a340b0bc52fb02a894146bb8cca3a7d58281910f9779e67e9a6": {
+    "query": "SELECT webhook.* FROM webhook\n        JOIN webhook_source on webhook_source.webhook_id = webhook.id\n        WHERE webhook_source.provider_destination = $1 AND webhook_source.provider_name = $2",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "destination",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 2,
+          "name": "created_at",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 3,
+          "name": "updated_at",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 4,
+          "name": "metadata",
+          "type_info": "Jsonb"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    }
+  },
+  "ab5492641d9960173e369d2ee9d2644a0e6ebd17ba0fc0d8ed5d375b56419e52": {
+    "query": "UPDATE provider_resource SET last_scrape = NOW() WHERE name = $1 AND destination = $2 RETURNING *",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "destination",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 2,
+          "name": "name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 3,
+          "name": "enabled",
+          "type_info": "Bool"
+        },
+        {
+          "ordinal": 4,
+          "name": "priority",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 5,
+          "name": "last_scrape",
+          "type_info": "Timestamp"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        true,
+        false,
+        true
+      ]
+    }
+  },
+  "bc01c48c8779e64839debbeb313a9fa62880dea90258c30bea3ec2130baf63bd": {
+    "query": "INSERT INTO scrape_request (scrape_id, response_code, response_delay, scraped_at, page)\n                    VALUES ($1, $2, $3, $4, $5)\n                    RETURNING id",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int4",
+          "Int4",
+          "Int4",
+          "Timestamp",
+          "Int4"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
+  "d1d471d3f9095ebb9d2dc56aab261193cdbd35cb2b176abe518afff386974e02": {
+    "query": "INSERT INTO scrape_error (scrape_id, response_code)\n                                VALUES ($1, $2)",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int4",
+          "Text"
+        ]
+      },
+      "nullable": []
+    }
+  },
+  "e97e87f09e9373cafdf3d54db5cada234aef2ef52643e43aa8fdb43ef320db85": {
+    "query": "SELECT unique_identifier FROM media\n        WHERE provider_name = $1 AND provider_destination = $2\n        order by discovered_at, id limit 10",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "unique_identifier",
+          "type_info": "Text"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
+  "f261911c3715ae3da1136493939017f81cf24531bab35b4a34291aa6a1fbbbca": {
+    "query": "SELECT * FROM provider_resource WHERE enabled = True",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "destination",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 2,
+          "name": "name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 3,
+          "name": "enabled",
+          "type_info": "Bool"
+        },
+        {
+          "ordinal": 4,
+          "name": "priority",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 5,
+          "name": "last_scrape",
+          "type_info": "Timestamp"
+        }
+      ],
+      "parameters": {
+        "Left": []
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        true,
+        false,
+        true
+      ]
+    }
+  }
 }

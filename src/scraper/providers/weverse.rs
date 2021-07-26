@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use bimap::{BiHashMap, BiMap};
 use chrono::{DateTime, Utc};
+use governor::Quota;
 use lazy_static::lazy_static;
 use log::info;
 use rand::rngs::OsRng;
@@ -17,8 +18,8 @@ use crate::{
 };
 
 use super::{
-    AllProviders, PageSize, Pagination, Provider, ProviderFailure, ProviderState, ProviderStep,
-    ScrapeUrl,
+    default_jitter, default_quota, AllProviders, PageSize, Pagination, Provider, ProviderFailure,
+    ProviderLimiter, ProviderState, ProviderStep, RateLimitable, ScrapeUrl,
 };
 
 /// https://gist.github.com/Xetera/aa59e84f3959a37c16a3309b5d9ab5a0
@@ -169,10 +170,11 @@ pub struct WeversePage {
     posts: Vec<WeversePost>,
 }
 
-#[derive(Clone)]
+// #[derive(Clone)]
 pub struct WeverseArtistFeed {
     pub client: Arc<Client>,
     pub access_token: Option<String>,
+    pub rate_limiter: ProviderLimiter,
 }
 
 lazy_static! {
@@ -196,16 +198,27 @@ const MAX_PAGESIZE: usize = 30;
 const DEFAULT_PAGESIZE: usize = 16;
 
 #[async_trait]
+impl RateLimitable for WeverseArtistFeed {
+    fn quota() -> Quota
+    where
+        Self: Sized,
+    {
+        default_quota()
+    }
+    async fn wait(&self, _key: &str) -> () {
+        self.rate_limiter
+            .until_ready_with_jitter(default_jitter())
+            .await
+    }
+}
+
+#[async_trait]
 impl Provider for WeverseArtistFeed {
     fn id(&self) -> AllProviders {
         AllProviders::WeverseArtistFeed
     }
 
-    fn estimated_page_size(
-        &self,
-        last_scrape: Option<DateTime<Utc>>,
-        iteration: usize,
-    ) -> PageSize {
+    fn next_page_size(&self, last_scrape: Option<DateTime<Utc>>, iteration: usize) -> PageSize {
         PageSize(match last_scrape {
             None => MAX_PAGESIZE,
             Some(_) => {
