@@ -10,6 +10,7 @@
 ## Supported Providers
 
 * [Pinterest Boards](https://www.pinterest.com/janairaoliveira314/handong)
+* [Weverse.io](https://weverse.io/dreamcatcher/feed)
 
 ## Jiu is **NOT**:
 * For bombarding sites like Twitter with requests to detect changes within seconds.
