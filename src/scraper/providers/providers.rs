@@ -89,6 +89,7 @@ impl From<reqwest::Error> for ProviderFailure {
 pub struct ProviderState {
     // empty if we're done with pagination
     pub url: ScrapeUrl,
+    pub iteration: usize,
 }
 
 pub struct ScrapeRequestInput {
@@ -125,8 +126,13 @@ pub trait Provider: Sync + DynClone {
     fn id(&self) -> AllProviders;
     /// The page size that should be used when scraping
     /// Destinations that haven't been scraped before should be using a larger
-    /// page size to
-    fn estimated_page_size(&self, last_scraped: Option<DateTime<Utc>>) -> PageSize;
+    /// page size.
+    /// iteration is 0 indexed
+    fn estimated_page_size(
+        &self,
+        last_scraped: Option<DateTime<Utc>>,
+        iteration: usize,
+    ) -> PageSize;
     /// The maximum number of times a resource can be paginated before exiting.
     /// This value is ignored if the context has no images aka the resource
     /// is being scraped for the first time

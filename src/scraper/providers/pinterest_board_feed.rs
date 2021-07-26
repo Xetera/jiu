@@ -79,11 +79,15 @@ impl Provider for PinterestBoardFeed {
     fn id(&self) -> AllProviders {
         AllProviders::PinterestBoardFeed
     }
-    fn estimated_page_size(&self, last_scraped: Option<DateTime<Utc>>) -> PageSize {
+    fn estimated_page_size(
+        &self,
+        last_scraped: Option<DateTime<Utc>>,
+        _iteration: usize,
+    ) -> PageSize {
         PageSize(match last_scraped {
             // TODO: fix
             None => MAXIMUM_PAGE_SIZE,
-            Some(_date) => MAXIMUM_PAGE_SIZE,
+            Some(_) => MAXIMUM_PAGE_SIZE,
         })
     }
 

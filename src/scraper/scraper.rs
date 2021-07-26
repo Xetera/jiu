@@ -40,21 +40,27 @@ pub async fn scrape<'a>(
     scrape: &dyn Provider,
     input: &ScrapeRequestInput,
 ) -> Result<Scrape<'a>, ProviderFailure> {
-    let page_size = scrape.estimated_page_size(input.last_scrape);
+    let initial_iteration = 0;
+    let page_size = scrape.estimated_page_size(input.last_scrape, initial_iteration);
     let url =
         scrape.from_provider_destination(sp.destination.clone(), page_size.to_owned(), None)?;
-    let seed = ProviderState { url: url };
+    let seed = ProviderState {
+        url,
+        iteration: initial_iteration,
+    };
     let mut steps = futures::stream::unfold(Some(seed), |state| async {
         match state {
             None => None,
             Some(state) => {
                 debug!("Scraping URL: {:?}", state.url.0);
+                let iteration = state.iteration;
                 Some(match scrape.unfold(state).await {
                     // we have to indicate an error to the consumer and stop iteration on the next cycle
                     Err(err) => (InternalScraperStep::Error(err), None),
                     Ok(ProviderStep::End(result)) => (InternalScraperStep::Data(result), None),
                     Ok(ProviderStep::NotInitialized) => (InternalScraperStep::Exit, None),
                     Ok(ProviderStep::Next(result, response_json)) => {
+                        let page_size = scrape.estimated_page_size(input.last_scrape, iteration);
                         let maybe_next_url = scrape.from_provider_destination(
                             sp.destination.clone(),
                             page_size.to_owned(),
@@ -63,7 +69,10 @@ pub async fn scrape<'a>(
                         match maybe_next_url {
                             Err(err) => (InternalScraperStep::Error(err), None),
                             Ok(url) => {
-                                let next_state = ProviderState { url: url.clone() };
+                                let next_state = ProviderState {
+                                    url: url.clone(),
+                                    iteration: iteration + 1,
+                                };
                                 (InternalScraperStep::Data(result), Some(next_state))
                             }
                         }

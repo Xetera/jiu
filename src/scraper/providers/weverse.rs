@@ -191,23 +191,40 @@ fn url_from_post(artist_id: u32, post_id: u64, photo_id: u64) -> String {
     .to_owned()
 }
 
+const MAX_PAGESIZE: usize = 30;
+// weverse is stupid and uses a 16 page default pagesize
+const DEFAULT_PAGESIZE: usize = 16;
+
 #[async_trait]
 impl Provider for WeverseArtistFeed {
     fn id(&self) -> AllProviders {
         AllProviders::WeverseArtistFeed
     }
 
-    fn estimated_page_size(&self, _: Option<DateTime<Utc>>) -> PageSize {
-        PageSize(0)
+    fn estimated_page_size(
+        &self,
+        last_scrape: Option<DateTime<Utc>>,
+        iteration: usize,
+    ) -> PageSize {
+        PageSize(match last_scrape {
+            None => MAX_PAGESIZE,
+            Some(_) => {
+                if iteration > 2 {
+                    MAX_PAGESIZE
+                } else {
+                    DEFAULT_PAGESIZE
+                }
+            }
+        })
     }
 
     fn from_provider_destination(
         &self,
         id: String,
-        _page_size: super::PageSize,
+        page_size: PageSize,
         pagination: Option<Pagination>,
     ) -> Result<ScrapeUrl, ProviderFailure> {
-        let mut params = vec![];
+        let mut params = vec![("pageSize", page_size.0.to_string())];
         if let Some(page) = pagination {
             params.push(("from", page.next_page()));
         }
