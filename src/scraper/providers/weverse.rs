@@ -263,7 +263,7 @@ impl Provider for WeverseArtistFeed {
                                         width: photo.org_img_width,
                                         thumbnail_url: photo.thumbnail_img_url.clone(),
                                     })
-                                    .map_or_else(|_err| None, |data| Some(data)),
+                                    .ok(),
                                 }
                             })
                             // not sure why I have to do this here

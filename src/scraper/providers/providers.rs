@@ -3,7 +3,6 @@ use crate::request::HttpError;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use dyn_clone::DynClone;
-use enum_map::Enum;
 use log::error;
 use reqwest::StatusCode;
 use serde;
@@ -151,9 +150,7 @@ pub trait Provider: Sync + DynClone {
     async fn unfold(&self, state: ProviderState) -> Result<ProviderStep, ProviderFailure>;
 }
 
-#[derive(
-    Debug, Copy, Clone, Serialize, EnumString, Enum, strum_macros::ToString, PartialEq, Eq,
-)]
+#[derive(Debug, Copy, Clone, Serialize, EnumString, strum_macros::ToString, PartialEq, Eq)]
 pub enum AllProviders {
     #[strum(serialize = "pinterest.board_feed")]
     PinterestBoardFeed,
