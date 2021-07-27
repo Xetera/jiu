@@ -1,4 +1,5 @@
-use futures::{stream, StreamExt};
+use futures::{future::join_all, stream, StreamExt};
+use governor::{Jitter, Quota, RateLimiter};
 use jiu::{
     db::{
         connect, latest_media_ids_from_provider, pending_scrapes, process_scrape,
@@ -11,18 +12,15 @@ use jiu::{
     },
     webhook::dispatcher::dispatch_webhooks,
 };
-use lazy_static::lazy_static;
 use log::{debug, info};
+use nonzero_ext::nonzero;
 use reqwest::Client;
 use sqlx::{Pool, Postgres};
-use std::{collections::HashMap, error::Error, iter::FromIterator, sync::Arc};
+use std::{collections::HashMap, error::Error, iter::FromIterator, sync::Arc, time::Duration};
 use strum::IntoEnumIterator;
 
-const PROVIDER_PROCESSING_LIMIT: usize = 8;
+const PROVIDER_PROCESSING_LIMIT: u32 = 8;
 
-lazy_static! {
-    static ref WEVERSE_ACCESS_TOKEN: Option<String> = None;
-}
 struct Context {
     db: Pool<Postgres>,
 }
@@ -78,18 +76,24 @@ async fn run() -> Result<(), Box<dyn Error>> {
             };
             (provider_type, provider)
         }));
-    stream::iter(pending_providers)
-        .for_each_concurrent(PROVIDER_PROCESSING_LIMIT, |sp| async {
-            let provider = provider_map.get(&sp.provider.name).expect(&format!(
-                "Tried to get a provider that doesn't exist {}",
-                &sp.provider,
-            ));
-            match iter(&ctx, sp, &**provider).await {
-                Err(err) => eprintln!("{:?}", err),
-                Ok(_) => {}
-            }
-        })
-        .await;
+    let rate_limiter = RateLimiter::direct(
+        Quota::per_minute(nonzero!(60u32)).allow_burst(nonzero!(PROVIDER_PROCESSING_LIMIT)),
+    );
+    let futures = pending_providers.into_iter().map(|sp| async {
+        rate_limiter
+            .until_ready_with_jitter(Jitter::up_to(Duration::from_secs(4u64)))
+            .await;
+        let provider = provider_map.get(&sp.provider.name).expect(&format!(
+            "Tried to get a provider that doesn't exist {}",
+            &sp.provider,
+        ));
+        match iter(&ctx, sp, &**provider).await {
+            Err(err) => eprintln!("{:?}", err),
+            Ok(_) => {}
+        }
+        // info!("There are {} concurrent queries", rate_limiter.len())
+    });
+    join_all(futures).await;
     Ok(())
 }
 
