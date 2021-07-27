@@ -1,6 +1,7 @@
 use super::{
-    default_jitter, AllProviders, PageSize, Pagination, Provider, ProviderFailure, ProviderLimiter,
-    ProviderMedia, ProviderResult, ProviderState, ProviderStep, RateLimitable, ScrapeUrl,
+    default_jitter, AllProviders, GlobalProviderLimiter, PageSize, Pagination, Provider,
+    ProviderFailure, ProviderMedia, ProviderResult, ProviderState, ProviderStep, RateLimitable,
+    ScrapeUrl,
 };
 use crate::{
     request::{parse_successful_response, request_default_headers},
@@ -60,7 +61,7 @@ struct PinterestRequestDict<'a> {
 // #[derive(Clone)]
 pub struct PinterestBoardFeed {
     pub client: Arc<Client>,
-    pub rate_limiter: ProviderLimiter,
+    pub rate_limiter: GlobalProviderLimiter,
 }
 
 const PINTEREST_BOARD_SEPARATOR: &str = "|";

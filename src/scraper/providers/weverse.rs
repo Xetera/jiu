@@ -18,8 +18,8 @@ use crate::{
 };
 
 use super::{
-    default_jitter, default_quota, AllProviders, PageSize, Pagination, Provider, ProviderFailure,
-    ProviderLimiter, ProviderState, ProviderStep, RateLimitable, ScrapeUrl,
+    default_jitter, default_quota, AllProviders, GlobalProviderLimiter, PageSize, Pagination,
+    Provider, ProviderFailure, ProviderState, ProviderStep, RateLimitable, ScrapeUrl,
 };
 
 /// https://gist.github.com/Xetera/aa59e84f3959a37c16a3309b5d9ab5a0
@@ -174,7 +174,7 @@ pub struct WeversePage {
 pub struct WeverseArtistFeed {
     pub client: Arc<Client>,
     pub access_token: Option<String>,
-    pub rate_limiter: ProviderLimiter,
+    pub rate_limiter: GlobalProviderLimiter,
 }
 
 lazy_static! {

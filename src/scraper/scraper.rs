@@ -125,7 +125,7 @@ pub async fn scrape<'a>(
                     );
                     break;
                 }
-                tokio::time::sleep(scrape.scrape_delay()).await;
+                scrape.wait(&sp.destination).await;
             }
         }
     }

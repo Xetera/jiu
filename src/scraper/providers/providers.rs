@@ -1,8 +1,10 @@
-use super::{PageSize, ProviderLimiter, ScrapeUrl};
+use super::{GlobalProviderLimiter, PageSize, ScrapeUrl};
 use crate::request::HttpError;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use governor::{Jitter, Quota};
+use governor::clock::QuantaClock;
+use governor::state::{InMemoryState, NotKeyed, StateStore};
+use governor::{Jitter, Quota, RateLimiter};
 use log::error;
 use nonzero_ext::nonzero;
 use reqwest::StatusCode;
@@ -121,25 +123,28 @@ impl Pagination {
 
 #[async_trait]
 pub trait RateLimitable {
+    /// The available quota for this provider
     fn quota() -> Quota
     where
         Self: Sized,
     {
         default_quota()
     }
-    fn rate_limiter() -> ProviderLimiter
+    /// The default rate limiter implementation
+    /// This currently only supports global rate limiters
+    /// but may need to be changed to support local ones as well
+    fn rate_limiter() -> GlobalProviderLimiter
     where
         Self: Sized,
     {
-        ProviderLimiter::direct(Self::quota())
+        RateLimiter::direct(Self::quota())
     }
-    /// Not all rate limiters will be keyless. We need key to always be
-    /// available even if it's not being used
+    /// Wait for next request if token is not available
     async fn wait(&self, key: &str) -> ();
 }
 
 pub fn default_quota() -> Quota {
-    Quota::per_minute(nonzero!(40u32)).allow_burst(nonzero!(5u32))
+    Quota::per_minute(nonzero!(30u32)).allow_burst(nonzero!(5u32))
 }
 
 pub fn default_jitter() -> Jitter {
