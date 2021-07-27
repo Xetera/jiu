@@ -2,14 +2,13 @@ use super::{GlobalProviderLimiter, PageSize, ScrapeUrl};
 use crate::request::HttpError;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use governor::clock::QuantaClock;
-use governor::state::{InMemoryState, NotKeyed, StateStore};
 use governor::{Jitter, Quota, RateLimiter};
 use log::error;
 use nonzero_ext::nonzero;
-use reqwest::StatusCode;
+use reqwest::{Client, StatusCode};
 use serde;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::{collections::HashSet, ops::Add, time::Duration};
 use strum_macros;
 use strum_macros::{EnumIter, EnumString};
@@ -151,10 +150,18 @@ pub fn default_jitter() -> Jitter {
     Jitter::up_to(Duration::from_secs(2))
 }
 
+pub struct ProviderInput {
+    pub client: Arc<Client>,
+    pub access_token: Option<String>,
+}
+
 /// Providers represent a generic endpoint on a single platform that can be scraped
 /// with a unique identifier for each specific resource
 #[async_trait]
 pub trait Provider: Sync + RateLimitable {
+    fn new(input: ProviderInput) -> Self
+    where
+        Self: Sized;
     /// a string that uniquely identifies this provider
     fn id(&self) -> AllProviders;
     /// The page size that should be used when scraping

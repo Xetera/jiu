@@ -7,7 +7,7 @@ use jiu::{
     models::PendingProvider,
     scraper::{
         fetch_weverse_auth_token, scraper::scrape, AllProviders, PinterestBoardFeed, Provider,
-        RateLimitable, ScrapeRequestInput, WeverseArtistFeed,
+        ProviderInput, ScrapeRequestInput, WeverseArtistFeed,
     },
     webhook::dispatcher::dispatch_webhooks,
 };
@@ -25,7 +25,6 @@ lazy_static! {
 }
 struct Context {
     db: Pool<Postgres>,
-    weverse_access_token: Option<String>,
 }
 
 async fn iter(
@@ -62,25 +61,22 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let pending_providers = pending_scrapes(&db).await?;
     debug!("Pending providers = {:?}", pending_providers);
 
-    let ctx = Context {
-        db,
-        weverse_access_token: access_token,
-    };
+    let ctx = Context { db };
     let provider_map: HashMap<AllProviders, Box<dyn Provider>> =
-        HashMap::from_iter(AllProviders::iter().map(|iter| {
+        HashMap::from_iter(AllProviders::iter().map(|provider_type| {
             let client = Arc::clone(&client);
-            let provider: Box<dyn Provider> = match &iter {
-                AllProviders::PinterestBoardFeed => Box::new(PinterestBoardFeed {
-                    client,
-                    rate_limiter: PinterestBoardFeed::rate_limiter(),
-                }),
-                AllProviders::WeverseArtistFeed => Box::new(WeverseArtistFeed {
-                    client,
-                    access_token: ctx.weverse_access_token.clone(),
-                    rate_limiter: WeverseArtistFeed::rate_limiter(),
-                }),
+            let input = ProviderInput {
+                client,
+                access_token: match provider_type {
+                    AllProviders::WeverseArtistFeed => access_token.clone(),
+                    _ => None,
+                },
             };
-            (iter, provider)
+            let provider: Box<dyn Provider> = match &provider_type {
+                AllProviders::PinterestBoardFeed => Box::new(PinterestBoardFeed::new(input)),
+                AllProviders::WeverseArtistFeed => Box::new(WeverseArtistFeed::new(input)),
+            };
+            (provider_type, provider)
         }));
     stream::iter(pending_providers)
         .for_each_concurrent(PROVIDER_PROCESSING_LIMIT, |sp| async {

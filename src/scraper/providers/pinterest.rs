@@ -1,7 +1,7 @@
 use super::{
     default_jitter, AllProviders, GlobalProviderLimiter, PageSize, Pagination, Provider,
-    ProviderFailure, ProviderMedia, ProviderResult, ProviderState, ProviderStep, RateLimitable,
-    ScrapeUrl,
+    ProviderFailure, ProviderInput, ProviderMedia, ProviderResult, ProviderState, ProviderStep,
+    RateLimitable, ScrapeUrl,
 };
 use crate::{
     request::{parse_successful_response, request_default_headers},
@@ -87,6 +87,15 @@ impl RateLimitable for PinterestBoardFeed {
 // "board_id|board_url"
 #[async_trait]
 impl Provider for PinterestBoardFeed {
+    fn new(input: ProviderInput) -> Self
+    where
+        Self: Sized,
+    {
+        Self {
+            client: Arc::clone(&input.client),
+            rate_limiter: Self::rate_limiter(),
+        }
+    }
     fn id(&self) -> AllProviders {
         AllProviders::PinterestBoardFeed
     }

@@ -19,7 +19,8 @@ use crate::{
 
 use super::{
     default_jitter, default_quota, AllProviders, GlobalProviderLimiter, PageSize, Pagination,
-    Provider, ProviderFailure, ProviderState, ProviderStep, RateLimitable, ScrapeUrl,
+    Provider, ProviderFailure, ProviderInput, ProviderState, ProviderStep, RateLimitable,
+    ScrapeUrl,
 };
 
 /// https://gist.github.com/Xetera/aa59e84f3959a37c16a3309b5d9ab5a0
@@ -214,6 +215,16 @@ impl RateLimitable for WeverseArtistFeed {
 
 #[async_trait]
 impl Provider for WeverseArtistFeed {
+    fn new(input: ProviderInput) -> Self
+    where
+        Self: Sized,
+    {
+        Self {
+            access_token: input.access_token,
+            client: Arc::clone(&input.client),
+            rate_limiter: Self::rate_limiter(),
+        }
+    }
     fn id(&self) -> AllProviders {
         AllProviders::WeverseArtistFeed
     }
