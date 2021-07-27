@@ -110,7 +110,10 @@ pub async fn fetch_weverse_auth_token(client: &Client) -> anyhow::Result<Option<
         env::var("WEVERSE_EMAIL"),
         env::var("WEVERSE_PASSWORD"),
     ) {
-        (Ok(access_token), _, _) => Ok(Some(access_token)),
+        (Ok(access_token), _, _) => {
+            info!("An existing weverse token was found");
+            Ok(Some(access_token))
+        }
         (_, Ok(email), Ok(password)) => {
             info!("Detected weverse credentials, attempting to login...");
             let public_key = get_public_key(&client).await?;
