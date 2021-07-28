@@ -1,6 +1,7 @@
 
 /target/
 **/*.rs.bk
+**/dist
 .vscode
 env.toml
 seed.sql

@@ -2,7 +2,6 @@ use actix_web;
 use futures::{future::join_all, stream, task, StreamExt};
 use governor::{Jitter, Quota, RateLimiter};
 use jiu::{
-    api::websocket::run_server,
     db::{
         connect, latest_media_ids_from_provider, latest_requests, pending_scrapes, process_scrape,
         submit_webhook_responses, webhooks_for_provider, Database,
@@ -12,6 +11,7 @@ use jiu::{
         fetch_weverse_auth_token, scraper::scrape, AllProviders, PinterestBoardFeed, Provider,
         ProviderInput, ScrapeRequestInput, WeverseArtistFeed,
     },
+    server::run_server,
     webhook::dispatcher::dispatch_webhooks,
 };
 use log::{debug, info};
@@ -56,7 +56,7 @@ async fn iter(
 async fn run(arc_db: Arc<Database>) -> Result<(), Box<dyn Error + Send>> {
     // let arc_db = Arc::new(db);
     let backing_client = Client::new();
-    let latest = latest_requests(&*arc_db).await?;
+    let latest = latest_requests(&*arc_db, true).await?;
     println!("{:?}", latest);
     let client = Arc::new(backing_client);
     let access_token = fetch_weverse_auth_token(&client).await?;
@@ -106,22 +106,22 @@ async fn run(arc_db: Arc<Database>) -> Result<(), Box<dyn Error + Send>> {
 
 async fn setup() -> anyhow::Result<()> {
     let db = Arc::new(connect().await?);
-    let data = tokio::task::spawn(run(Arc::clone(&db)));
+    // let data = tokio::task::spawn_local(run(Arc::clone(&db)));
     match run_server(Arc::clone(&db)).await {
         Err(err) => {
             eprintln!("{:?}", err);
         }
         Ok(()) => {}
     };
-    match data.await {
-        Err(err) => {
-            eprintln!("{:?}", err);
-        }
-        Ok(Err(err)) => {
-            eprintln!("{:?}", err);
-        }
-        _ => {}
-    };
+    // match data.await {
+    //     Err(err) => {
+    //         eprintln!("{:?}", err);
+    //     }
+    //     Ok(Err(err)) => {
+    //         eprintln!("{:?}", err);
+    //     }
+    //     _ => {}
+    // };
     Ok(())
 }
 

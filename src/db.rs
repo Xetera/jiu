@@ -248,11 +248,15 @@ pub async fn submit_webhook_responses(
     Ok(())
 }
 
-pub async fn latest_requests(db: &Database) -> anyhow::Result<Vec<ScrapeRequestWithMedia>> {
+pub async fn latest_requests(
+    db: &Database,
+    only_with_media: bool,
+) -> anyhow::Result<Vec<ScrapeRequestWithMedia>> {
     let results = dbg!(
         sqlx::query!(
             "select
                 sr.id as scrape_request_id,
+                s.id as scrape_id,
                 sr.response_delay,
                 sr.response_code,
                 sr.scraped_at,
@@ -262,7 +266,8 @@ pub async fn latest_requests(db: &Database) -> anyhow::Result<Vec<ScrapeRequestW
                 on s.id = sr.scrape_id
             join provider_resource pr
                 on pr.name = s.provider_name and pr.destination = s.provider_destination
-            LIMIT 50"
+            ORDER BY sr.scraped_at desc
+            LIMIT 50",
         )
         .fetch_all(db)
         .await?
@@ -272,8 +277,9 @@ pub async fn latest_requests(db: &Database) -> anyhow::Result<Vec<ScrapeRequestW
         .unique_by(|rec| rec.scrape_request_id)
         .map(|rec| rec.scrape_request_id)
         .collect::<Vec<i32>>();
+    // we're using scrape_id and not scrape_request_id because users only care about individual scrapes and not requests
     let medias = sqlx::query!(
-        "SELECT scrape_request_id, image_url FROM media where scrape_request_id = ANY($1)",
+        "SELECT sr.scrape_id, scrape_request_id, image_url FROM media m join scrape_request sr on sr.id = m.scrape_request_id where scrape_request_id = ANY($1)",
         &scrape_requests
     )
     .fetch_all(db)
@@ -281,8 +287,8 @@ pub async fn latest_requests(db: &Database) -> anyhow::Result<Vec<ScrapeRequestW
 
     let media_map = medias
         .into_iter()
-        .filter(|rec| rec.scrape_request_id.is_some())
-        .into_group_map_by(|rec| rec.scrape_request_id.unwrap());
+        .filter(|rec| rec.scrape_id.is_some() && rec.image_url.is_some())
+        .into_group_map_by(|rec| rec.scrape_id.unwrap());
 
     let mut out: Vec<ScrapeRequestWithMedia> = vec![];
     for result in results {
@@ -292,12 +298,12 @@ pub async fn latest_requests(db: &Database) -> anyhow::Result<Vec<ScrapeRequestW
             url: result.url.clone(),
             date: result.scraped_at,
             media: media_map
-                .get(&result.scrape_request_id)
+                .get(&result.scrape_id)
                 .unwrap_or(&vec![])
                 .into_iter()
                 .filter_map(|m| {
-                    if m.scrape_request_id.unwrap() == result.scrape_request_id {
-                        Some(m.image_url.clone())
+                    if m.scrape_id.unwrap() == result.scrape_id {
+                        Some(m.image_url.clone().unwrap())
                     } else {
                         None
                     }
