@@ -1,9 +1,11 @@
-use futures::{future::join_all, stream, StreamExt};
+use actix_web;
+use futures::{future::join_all, stream, task, StreamExt};
 use governor::{Jitter, Quota, RateLimiter};
 use jiu::{
+    api::websocket::run_server,
     db::{
-        connect, latest_media_ids_from_provider, pending_scrapes, process_scrape,
-        submit_webhook_responses, webhooks_for_provider,
+        connect, latest_media_ids_from_provider, latest_requests, pending_scrapes, process_scrape,
+        submit_webhook_responses, webhooks_for_provider, Database,
     },
     models::PendingProvider,
     scraper::{
@@ -22,7 +24,7 @@ use strum::IntoEnumIterator;
 const PROVIDER_PROCESSING_LIMIT: u32 = 8;
 
 struct Context {
-    db: Pool<Postgres>,
+    db: Arc<Pool<Postgres>>,
 }
 
 async fn iter(
@@ -51,15 +53,19 @@ async fn iter(
     Ok(())
 }
 
-async fn run() -> Result<(), Box<dyn Error>> {
-    let db = connect().await?;
+async fn run(arc_db: Arc<Database>) -> Result<(), Box<dyn Error + Send>> {
+    // let arc_db = Arc::new(db);
     let backing_client = Client::new();
+    let latest = latest_requests(&*arc_db).await?;
+    println!("{:?}", latest);
     let client = Arc::new(backing_client);
     let access_token = fetch_weverse_auth_token(&client).await?;
-    let pending_providers = pending_scrapes(&db).await?;
+    let pending_providers = pending_scrapes(&*arc_db).await?;
     debug!("Pending providers = {:?}", pending_providers);
 
-    let ctx = Context { db };
+    let ctx = Context {
+        db: Arc::clone(&arc_db),
+    };
     let provider_map: HashMap<AllProviders, Box<dyn Provider>> =
         HashMap::from_iter(AllProviders::iter().map(|provider_type| {
             let client = Arc::clone(&client);
@@ -80,6 +86,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         Quota::per_minute(nonzero!(60u32)).allow_burst(nonzero!(PROVIDER_PROCESSING_LIMIT)),
     );
     let futures = pending_providers.into_iter().map(|sp| async {
+        info!("Waiting for rate limiter");
         rate_limiter
             .until_ready_with_jitter(Jitter::up_to(Duration::from_secs(4u64)))
             .await;
@@ -97,14 +104,33 @@ async fn run() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-#[tokio::main]
+async fn setup() -> anyhow::Result<()> {
+    let db = Arc::new(connect().await?);
+    let data = tokio::task::spawn(run(Arc::clone(&db)));
+    match run_server(Arc::clone(&db)).await {
+        Err(err) => {
+            eprintln!("{:?}", err);
+        }
+        Ok(()) => {}
+    };
+    match data.await {
+        Err(err) => {
+            eprintln!("{:?}", err);
+        }
+        Ok(Err(err)) => {
+            eprintln!("{:?}", err);
+        }
+        _ => {}
+    };
+    Ok(())
+}
+
+#[actix_web::main]
 async fn main() {
     better_panic::install();
     env_logger::init();
 
-    match run().await {
-        Ok(_) => {}
-        Err(err) => eprintln!("{:?}", err),
-    };
+    info!("Running program");
+    setup().await;
     println!("Done!");
 }

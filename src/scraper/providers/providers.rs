@@ -158,7 +158,7 @@ pub struct ProviderInput {
 /// Providers represent a generic endpoint on a single platform that can be scraped
 /// with a unique identifier for each specific resource
 #[async_trait]
-pub trait Provider: Sync + RateLimitable {
+pub trait Provider: Sync + Send + RateLimitable {
     fn new(input: ProviderInput) -> Self
     where
         Self: Sized;

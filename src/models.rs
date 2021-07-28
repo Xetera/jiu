@@ -1,5 +1,6 @@
 use crate::scraper::ScopedProvider;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use serde::Serialize;
 use std::fmt::Display;
 
 #[derive(Debug)]
@@ -9,6 +10,15 @@ pub struct DatabaseWebhook {
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
     pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ScrapeRequestWithMedia {
+    pub url: String,
+    pub response_code: Option<i32>,
+    pub response_delay: Option<i32>,
+    pub date: NaiveDateTime,
+    pub media: Vec<String>,
 }
 
 #[derive(Debug)]

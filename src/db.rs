@@ -1,19 +1,21 @@
-use crate::models::{DatabaseWebhook, PendingProvider};
+use crate::models::{DatabaseWebhook, PendingProvider, ScrapeRequestWithMedia};
 use crate::request::HttpError;
 use crate::scraper::scraper::{Scrape, ScraperStep};
 use crate::scraper::{AllProviders, ProviderFailure, ScopedProvider};
 use crate::webhook::dispatcher::WebhookInteraction;
 use chrono::{DateTime, Utc};
 use dotenv::dotenv;
+use futures::TryStreamExt;
+use itertools::Itertools;
 use log::error;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{Error, Pool, Postgres};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::iter::FromIterator;
 use std::str::FromStr;
 
-type Database = Pool<Postgres>;
+pub type Database = Pool<Postgres>;
 
 pub async fn connect() -> Result<Database, Error> {
     dotenv().ok();
@@ -244,4 +246,64 @@ pub async fn submit_webhook_responses(
     }
     tx.commit().await?;
     Ok(())
+}
+
+pub async fn latest_requests(db: &Database) -> anyhow::Result<Vec<ScrapeRequestWithMedia>> {
+    let results = dbg!(
+        sqlx::query!(
+            "select
+                sr.id as scrape_request_id,
+                sr.response_delay,
+                sr.response_code,
+                sr.scraped_at,
+                pr.url
+            from scrape_request sr
+            join scrape s
+                on s.id = sr.scrape_id
+            join provider_resource pr
+                on pr.name = s.provider_name and pr.destination = s.provider_destination
+            LIMIT 50"
+        )
+        .fetch_all(db)
+        .await?
+    );
+    let scrape_requests = results
+        .iter()
+        .unique_by(|rec| rec.scrape_request_id)
+        .map(|rec| rec.scrape_request_id)
+        .collect::<Vec<i32>>();
+    let medias = sqlx::query!(
+        "SELECT scrape_request_id, image_url FROM media where scrape_request_id = ANY($1)",
+        &scrape_requests
+    )
+    .fetch_all(db)
+    .await?;
+
+    let media_map = medias
+        .into_iter()
+        .filter(|rec| rec.scrape_request_id.is_some())
+        .into_group_map_by(|rec| rec.scrape_request_id.unwrap());
+
+    let mut out: Vec<ScrapeRequestWithMedia> = vec![];
+    for result in results {
+        out.push(ScrapeRequestWithMedia {
+            response_code: result.response_code,
+            response_delay: result.response_delay,
+            url: result.url.clone(),
+            date: result.scraped_at,
+            media: media_map
+                .get(&result.scrape_request_id)
+                .unwrap_or(&vec![])
+                .into_iter()
+                .filter_map(|m| {
+                    if m.scrape_request_id.unwrap() == result.scrape_request_id {
+                        Some(m.image_url.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<String>>(),
+        })
+    }
+    Ok(out)
 }

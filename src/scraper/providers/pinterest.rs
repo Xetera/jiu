@@ -102,8 +102,8 @@ impl Provider for PinterestBoardFeed {
     fn next_page_size(&self, last_scraped: Option<DateTime<Utc>>, _iteration: usize) -> PageSize {
         PageSize(match last_scraped {
             // TODO: fix
-            None => MAXIMUM_PAGE_SIZE,
-            Some(_) => MAXIMUM_PAGE_SIZE,
+            None => 20,
+            Some(_) => 20,
         })
     }
 
