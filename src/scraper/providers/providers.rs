@@ -143,7 +143,10 @@ pub trait RateLimitable {
 }
 
 pub fn default_quota() -> Quota {
-    Quota::per_minute(nonzero!(30u32)).allow_burst(nonzero!(5u32))
+    // fairly aggressive quota
+    Quota::with_period(Duration::from_millis(3500u64))
+        .unwrap()
+        .allow_burst(nonzero!(4u32))
 }
 
 pub fn default_jitter() -> Jitter {

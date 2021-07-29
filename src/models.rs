@@ -13,12 +13,19 @@ pub struct DatabaseWebhook {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct ScrapeRequestMedia {
+    pub media_url: String,
+    pub page_url: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ScrapeRequestWithMedia {
+    pub provider_name: String,
     pub url: String,
     pub response_code: Option<i32>,
     pub response_delay: Option<i32>,
     pub date: NaiveDateTime,
-    pub media: Vec<String>,
+    pub media: Vec<ScrapeRequestMedia>,
 }
 
 #[derive(Debug)]

@@ -10,9 +10,11 @@
     "@chakra-ui/react": "^1.6.5",
     "@emotion/react": "^11",
     "@emotion/styled": "^11",
+    "date-fns": "^2.23.0",
     "framer-motion": "^4",
     "react": "^17.0.0",
-    "react-dom": "^17.0.0"
+    "react-dom": "^17.0.0",
+    "react-query": "^3.19.1"
   },
   "devDependencies": {
     "@types/react": "^17.0.0",

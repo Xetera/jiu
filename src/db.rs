@@ -1,4 +1,4 @@
-use crate::models::{DatabaseWebhook, PendingProvider, ScrapeRequestWithMedia};
+use crate::models::{DatabaseWebhook, PendingProvider, ScrapeRequestMedia, ScrapeRequestWithMedia};
 use crate::request::HttpError;
 use crate::scraper::scraper::{Scrape, ScraperStep};
 use crate::scraper::{AllProviders, ProviderFailure, ScopedProvider};
@@ -257,6 +257,7 @@ pub async fn latest_requests(
             "select
                 sr.id as scrape_request_id,
                 s.id as scrape_id,
+                pr.name,
                 sr.response_delay,
                 sr.response_code,
                 sr.scraped_at,
@@ -272,15 +273,21 @@ pub async fn latest_requests(
         .fetch_all(db)
         .await?
     );
-    let scrape_requests = results
+    let scrape_ids = results
         .iter()
-        .unique_by(|rec| rec.scrape_request_id)
-        .map(|rec| rec.scrape_request_id)
+        .unique_by(|rec| rec.scrape_id)
+        .map(|rec| rec.scrape_id)
         .collect::<Vec<i32>>();
     // we're using scrape_id and not scrape_request_id because users only care about individual scrapes and not requests
     let medias = sqlx::query!(
-        "SELECT sr.scrape_id, scrape_request_id, image_url FROM media m join scrape_request sr on sr.id = m.scrape_request_id where scrape_request_id = ANY($1)",
-        &scrape_requests
+        "SELECT sr.scrape_id, scrape_request_id, page_url, image_url
+        FROM media m
+        join scrape_request sr
+            on sr.id = m.scrape_request_id
+        join scrape s
+            on s.id = sr.scrape_id
+        where s.id = ANY($1)",
+        &scrape_ids
     )
     .fetch_all(db)
     .await?;
@@ -295,6 +302,7 @@ pub async fn latest_requests(
         out.push(ScrapeRequestWithMedia {
             response_code: result.response_code,
             response_delay: result.response_delay,
+            provider_name: result.name.clone(),
             url: result.url.clone(),
             date: result.scraped_at,
             media: media_map
@@ -303,12 +311,15 @@ pub async fn latest_requests(
                 .into_iter()
                 .filter_map(|m| {
                     if m.scrape_id.unwrap() == result.scrape_id {
-                        Some(m.image_url.clone().unwrap())
+                        Some(ScrapeRequestMedia {
+                            media_url: m.image_url.clone().unwrap(),
+                            page_url: m.page_url.clone().unwrap(),
+                        })
                     } else {
                         None
                     }
                 })
-                .collect::<Vec<String>>(),
+                .collect::<Vec<ScrapeRequestMedia>>(),
         })
     }
     Ok(out)

@@ -1,11 +1,10 @@
-use actix::{Actor, StreamHandler};
 use actix_files as fs;
 use actix_web::{
-    get,
+    get, http,
     web::{self, Data},
-    App, Error, HttpRequest, HttpResponse, HttpServer, Responder,
+    App, HttpResponse, HttpServer, Responder,
 };
-use log::{error, info};
+use log::{debug, error, info};
 use std::sync::Arc;
 
 use crate::db::{latest_requests, Database};
@@ -14,10 +13,13 @@ struct Context {
     db: Arc<Database>,
 }
 
-#[get("/requests")]
+#[get("/api/requests")]
 async fn get_requests(ctx: web::Data<Context>) -> impl Responder {
     match latest_requests(&ctx.db, true).await {
-        Ok(data) => HttpResponse::Ok().body(serde_json::to_value(data).unwrap().to_string()),
+        Ok(data) => {
+            debug!("Got response from latest_request");
+            HttpResponse::Ok().body(serde_json::to_value(data).unwrap().to_string())
+        }
         Err(err) => {
             error!("{:?}", err);
             HttpResponse::InternalServerError().body("[]")
