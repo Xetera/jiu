@@ -1,5 +1,5 @@
 use actix_web;
-use futures::{future::join_all, stream, task, StreamExt};
+use futures::future::join_all;
 use governor::{Jitter, Quota, RateLimiter};
 use jiu::{
     db::{
@@ -9,7 +9,7 @@ use jiu::{
     models::PendingProvider,
     scraper::{
         fetch_weverse_auth_token, scraper::scrape, AllProviders, PinterestBoardFeed, Provider,
-        ProviderInput, ScrapeRequestInput, WeverseArtistFeed,
+        ProviderCredentials, ProviderInput, ScrapeRequestInput, WeverseArtistFeed,
     },
     server::run_server,
     webhook::dispatcher::dispatch_webhooks,
@@ -71,8 +71,8 @@ async fn run(arc_db: Arc<Database>) -> Result<(), Box<dyn Error + Send>> {
             let client = Arc::clone(&client);
             let input = ProviderInput {
                 client,
-                access_token: match provider_type {
-                    AllProviders::WeverseArtistFeed => access_token.clone(),
+                credentials: match provider_type {
+                    AllProviders::WeverseArtistFeed => Some(access_token.clone().unwrap()),
                     _ => None,
                 },
             };

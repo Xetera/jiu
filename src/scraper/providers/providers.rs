@@ -2,13 +2,14 @@ use super::{GlobalProviderLimiter, PageSize, ScrapeUrl};
 use crate::request::HttpError;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use futures::lock::MutexGuard;
 use governor::{Jitter, Quota, RateLimiter};
-use log::error;
+use log::{debug, error};
 use nonzero_ext::nonzero;
 use reqwest::{Client, StatusCode};
 use serde;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError, RwLock};
 use std::{collections::HashSet, ops::Add, time::Duration};
 use strum_macros;
 use strum_macros::{EnumIter, EnumString};
@@ -79,6 +80,8 @@ pub enum ProviderFailure {
     Url,
     #[error("Failed to process response from request")]
     HttpError(HttpError),
+    #[error("Failed to process response from request")]
+    Other(HttpError),
 }
 
 impl From<reqwest::Error> for ProviderFailure {
@@ -103,6 +106,25 @@ impl From<HttpError> for ProviderFailure {
     fn from(err: HttpError) -> Self {
         Self::HttpError(err)
     }
+}
+
+// pub enum ErrorSequence<T, V> {
+//     Next(Box<dyn Fn(&T) -> BoxFuture<anyhow::Result<ErrorSequence<T, V>>>>),
+//     Done(V),
+// }
+
+pub enum CredentialRefresh {
+    Result(ProviderCredentials),
+    TryLogin,
+    Halt,
+}
+
+pub enum ProviderErrorHandle {
+    RefreshToken, // (
+    // ErrorSequence<HttpError, ProviderCredentials>
+    // )
+    Login,
+    Halt,
 }
 
 #[derive(Debug)]
@@ -153,9 +175,15 @@ pub fn default_jitter() -> Jitter {
     Jitter::up_to(Duration::from_secs(2))
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ProviderCredentials {
+    pub access_token: String,
+    pub refresh_token: String,
+}
+
 pub struct ProviderInput {
     pub client: Arc<Client>,
-    pub access_token: Option<String>,
+    pub credentials: Option<Arc<RwLock<ProviderCredentials>>>,
 }
 
 /// Providers represent a generic endpoint on a single platform that can be scraped
@@ -183,7 +211,7 @@ pub trait Provider: Sync + Send + RateLimitable {
     fn scrape_delay(&self) -> Duration {
         Duration::from_secs(2)
     }
-    /// Provider destination are any unique identifier a provider can try to resolve into an opaque [ScrapeUrl`].
+    /// Provider destination are any unique identifier a provider can try to resolve into an opaque [ScrapeUrl].
     /// This method is called after every successful scrape to resolve the next page of media
     fn from_provider_destination(
         &self,
@@ -193,6 +221,36 @@ pub trait Provider: Sync + Send + RateLimitable {
     ) -> Result<ScrapeUrl, ProviderFailure>;
     /// Process a single iteration of the resource
     async fn unfold(&self, state: ProviderState) -> Result<ProviderStep, ProviderFailure>;
+
+    /// Error handling branch that separates operational errors from authorization
+    /// related error codes
+    fn on_error(&self, _http_error: &HttpError) -> anyhow::Result<ProviderErrorHandle> {
+        debug!(
+            "{} ran into an unhandled error and is halting",
+            self.id().to_string()
+        );
+        Ok(ProviderErrorHandle::Halt)
+    }
+
+    async fn token_refresh(&self) -> anyhow::Result<CredentialRefresh> {
+        panic!(
+            "{}'s on_error branch tried to refresh credentials but it doesn't implement a token refresh flow",
+            self.id().to_string()
+        )
+    }
+
+    async fn login(&self) -> anyhow::Result<ProviderCredentials> {
+        panic!(
+            "{} tried to login but it doesn't implement a login flow",
+            self.id().to_string()
+        )
+    }
+    fn credentials(&self) -> Arc<RwLock<ProviderCredentials>> {
+        panic!(
+            "Tried to get credentials for {} which doesn't authorization",
+            self.id().to_string()
+        )
+    }
 }
 
 #[derive(

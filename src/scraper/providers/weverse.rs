@@ -10,17 +10,22 @@ use reqwest::Client;
 use rsa::{PaddingScheme, PublicKey, RSAPublicKey};
 use serde::{Deserialize, Serialize};
 use sha1::Sha1;
-use std::{env, iter::FromIterator, sync::Arc, time::Instant};
+use std::{
+    env,
+    iter::FromIterator,
+    sync::{Arc, Mutex, RwLock},
+    time::Instant,
+};
 
 use crate::{
-    request::{parse_successful_response, request_default_headers},
+    request::{parse_successful_response, request_default_headers, HttpError},
     scraper::{providers::ProviderMediaType, ProviderMedia, ProviderResult},
 };
 
 use super::{
-    default_jitter, default_quota, AllProviders, GlobalProviderLimiter, PageSize, Pagination,
-    Provider, ProviderFailure, ProviderInput, ProviderState, ProviderStep, RateLimitable,
-    ScrapeUrl,
+    default_jitter, default_quota, AllProviders, CredentialRefresh, GlobalProviderLimiter,
+    PageSize, Pagination, Provider, ProviderCredentials, ProviderErrorHandle, ProviderFailure,
+    ProviderInput, ProviderState, ProviderStep, RateLimitable, ScrapeUrl,
 };
 
 /// https://gist.github.com/Xetera/aa59e84f3959a37c16a3309b5d9ab5a0
@@ -90,10 +95,10 @@ async fn get_access_token(
     email: String,
     encrypted_password: String,
     client: &Client,
-) -> anyhow::Result<WeverseLoginResponse> {
+) -> anyhow::Result<WeverseAuthorizeResponse> {
     Ok(client
         .post("https://accountapi.weverse.io/api/v1/oauth/token")
-        .json(&WeverseLoginRequest {
+        .json(&WeverseAuthorizeInput::Login {
             grant_type: "password".to_owned(),
             client_id: "weverse-test".to_owned(),
             username: email,
@@ -101,10 +106,12 @@ async fn get_access_token(
         })
         .send()
         .await?
-        .json::<WeverseLoginResponse>()
+        .json::<WeverseAuthorizeResponse>()
         .await?)
 }
-pub async fn fetch_weverse_auth_token(client: &Client) -> anyhow::Result<Option<String>> {
+pub async fn fetch_weverse_auth_token(
+    client: &Client,
+) -> anyhow::Result<Option<ProviderCredentials>> {
     match (
         env::var("WEVERSE_ACCESS_TOKEN"),
         env::var("WEVERSE_EMAIL"),
@@ -112,14 +119,20 @@ pub async fn fetch_weverse_auth_token(client: &Client) -> anyhow::Result<Option<
     ) {
         (Ok(access_token), _, _) => {
             info!("An existing weverse token was found");
-            Ok(Some(access_token))
+            Ok(Some(ProviderCredentials {
+                access_token,
+                refresh_token: "".to_owned(),
+            }))
         }
         (_, Ok(email), Ok(password)) => {
             info!("Detected weverse credentials, attempting to login...");
             let public_key = get_public_key(&client).await?;
             let encrypted = encrypted_password(password, public_key)?;
             let token = get_access_token(email, encrypted, &client).await?;
-            Ok(Some(token.access_token))
+            Ok(Some(ProviderCredentials {
+                access_token: token.access_token,
+                refresh_token: token.refresh_token,
+            }))
         }
         _ => {
             info!("Weverse credentials missing, not initializing Weverse module");
@@ -166,6 +179,31 @@ pub struct WeverseMetadata {
     thumbnail_url: String,
 }
 
+#[derive(Debug, Serialize)]
+enum WeverseAuthorizeInput {
+    TokenRefresh {
+        client_id: String,
+        grant_type: String,
+        refresh_token: String,
+    },
+    Login {
+        client_id: String,
+        grant_type: String,
+        username: String,
+        password: String,
+    },
+}
+#[derive(Debug, Deserialize)]
+struct WeverseAuthorizeResponse {
+    access_token: String,
+    token_type: String,
+    expires_in: i32,
+    refresh_token: String,
+}
+
+#[derive(Debug, Serialize)]
+struct WeverseTokenRefreshInput {}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WeversePage {
@@ -177,7 +215,7 @@ pub struct WeversePage {
 // #[derive(Clone)]
 pub struct WeverseArtistFeed {
     pub client: Arc<Client>,
-    pub access_token: Option<String>,
+    pub credentials: Option<Arc<RwLock<ProviderCredentials>>>,
     pub rate_limiter: GlobalProviderLimiter,
 }
 
@@ -223,7 +261,7 @@ impl Provider for WeverseArtistFeed {
         Self: Sized,
     {
         Self {
-            access_token: input.access_token,
+            credentials: input.credentials,
             client: Arc::clone(&input.client),
             rate_limiter: Self::rate_limiter(),
         }
@@ -272,15 +310,14 @@ impl Provider for WeverseArtistFeed {
     }
 
     async fn unfold(&self, state: ProviderState) -> Result<ProviderStep, ProviderFailure> {
-        match &self.access_token {
-            None => {
-                info!(
-                    "Weverse module was not initialized, not scraping url: {}",
-                    state.url.0
-                );
-                Ok(ProviderStep::NotInitialized)
-            }
-            Some(token) => {
+        match &self.credentials {
+            Some(credentials) => {
+                let token = credentials.read().unwrap().refresh_token.clone();
+                // ProviderCredentials {
+
+                //                 access_token: Some(token),
+                //                 refresh_token: _,
+                //             }
                 let instant = Instant::now();
                 let response = self
                     .client
@@ -345,6 +382,75 @@ impl Provider for WeverseArtistFeed {
                 Ok(ProviderStep::End(result))
                 // todo!()
             }
+            _ => {
+                info!(
+                    "Weverse module was not initialized, not scraping url: {}",
+                    state.url.0
+                );
+                Ok(ProviderStep::NotInitialized)
+            }
         }
+    }
+
+    fn on_error(&self, http_error: &HttpError) -> anyhow::Result<ProviderErrorHandle> {
+        match &http_error {
+            HttpError::FailStatus(err) | HttpError::UnexpectedBody(err) => {
+                // :) I don't actually know if weverse returns a 401 on expired tokens
+                // but I can't test because their tokens last for 6 ENTIRE months!!!!
+                if err.code == 401 {
+                    return Ok(ProviderErrorHandle::RefreshToken);
+                }
+                Ok(ProviderErrorHandle::Halt)
+            }
+            _ => Ok(ProviderErrorHandle::Halt),
+        }
+    }
+    async fn token_refresh(&self) -> anyhow::Result<CredentialRefresh> {
+        match &self.credentials {
+            // we already have a refresh token from a previous login attempt?
+            Some(credentials) => {
+                let refresh_token = credentials.read().unwrap().refresh_token.clone();
+
+                let input = WeverseAuthorizeInput::TokenRefresh {
+                    grant_type: "refresh_token".to_owned(),
+                    client_id: "weverse-test".to_owned(),
+                    refresh_token: refresh_token.to_owned(),
+                };
+                let out = self
+                    .client
+                    .post("https://accountapi.weverse.io/api/v1/oauth/token")
+                    .json(&input)
+                    .send()
+                    .await?
+                    .json::<WeverseAuthorizeResponse>()
+                    .await?;
+                let credentials_result = ProviderCredentials {
+                    access_token: out.access_token,
+                    refresh_token: out.refresh_token,
+                };
+                // if something goes wrong here it should be panicking
+                // let credentials_ref = credentials.write().unwrap();
+                // *credentials_ref = credentials_result;
+                Ok(CredentialRefresh::Result(credentials_result))
+            }
+            _ => Ok(CredentialRefresh::TryLogin),
+        }
+    }
+    async fn login(&self) -> anyhow::Result<ProviderCredentials> {
+        let credentials = fetch_weverse_auth_token(&self.client)
+            .await?
+            .expect("Tried to authorize weverse module but the login credentials were not found");
+        // let credentials_ref = self
+        //     .credentials
+        //     .unwrap_or(Arc::new(RwLock::new(ProviderCredentials::default())))
+        //     .write()
+        //     .unwrap();
+        // credentials_ref.write()
+        // let credentials_ref.write()
+        // *credentials_ref = credentials;
+        Ok(credentials)
+    }
+    fn credentials(&self) -> Arc<RwLock<ProviderCredentials>> {
+        self.credentials.clone().unwrap()
     }
 }

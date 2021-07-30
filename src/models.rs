@@ -1,5 +1,5 @@
 use crate::scraper::ScopedProvider;
-use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::Serialize;
 use std::fmt::Display;
 

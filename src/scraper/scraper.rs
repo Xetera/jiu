@@ -1,10 +1,13 @@
-use std::time::Instant;
+use std::{sync::Mutex, time::Instant};
 
 use super::{
     providers::{Provider, ProviderFailure, ProviderState, ProviderStep, ScrapeRequestInput},
     ProviderResult, ScopedProvider,
 };
-use crate::scraper::ProviderMedia;
+use crate::scraper::{
+    providers::{CredentialRefresh, ProviderErrorHandle},
+    ProviderMedia,
+};
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use log::{debug, info};
@@ -37,13 +40,13 @@ pub enum ScraperStep {
 
 pub async fn scrape<'a>(
     sp: &'a ScopedProvider,
-    scrape: &dyn Provider,
+    provider: &dyn Provider,
     input: &ScrapeRequestInput,
 ) -> Result<Scrape<'a>, ProviderFailure> {
     let initial_iteration = 0;
-    let page_size = scrape.next_page_size(input.last_scrape, initial_iteration);
+    let page_size = provider.next_page_size(input.last_scrape, initial_iteration);
     let url =
-        scrape.from_provider_destination(sp.destination.clone(), page_size.to_owned(), None)?;
+        provider.from_provider_destination(sp.destination.clone(), page_size.to_owned(), None)?;
     let seed = ProviderState {
         url,
         iteration: initial_iteration,
@@ -54,14 +57,53 @@ pub async fn scrape<'a>(
             Some(state) => {
                 debug!("Scraping URL: {:?}", state.url.0);
                 let iteration = state.iteration;
-                Some(match scrape.unfold(state).await {
+                Some(match provider.unfold(state).await {
                     // we have to indicate an error to the consumer and stop iteration on the next cycle
-                    Err(err) => (InternalScraperStep::Error(err), None),
+                    Err(error) => match &error {
+                        ProviderFailure::HttpError(http_error) => {
+                            match provider.on_error(http_error) {
+                                Ok(ProviderErrorHandle::Halt) => {
+                                    (InternalScraperStep::Error(error), None)
+                                }
+                                Ok(ProviderErrorHandle::RefreshToken) => {
+                                    match provider.token_refresh().await {
+                                        Ok(CredentialRefresh::Result(credentials)) => {
+                                            let creds = provider.credentials();
+                                            let mut creds_ref = creds.write().unwrap();
+                                            *creds_ref = credentials;
+                                            // TODO: retry the original request here
+                                            (InternalScraperStep::Error(error), None)
+                                        }
+                                        Ok(CredentialRefresh::TryLogin) => {
+                                            match provider.login().await {
+                                                Ok(credentials) => {
+                                                    let creds = provider.credentials();
+                                                    let mut creds_ref = creds.write().unwrap();
+                                                    *creds_ref = credentials;
+                                                    // TODO: retry the original request here
+                                                    (InternalScraperStep::Error(error), None)
+                                                }
+                                                Err(_error) => {
+                                                    (InternalScraperStep::Error(error), None)
+                                                }
+                                            }
+                                        }
+                                        Ok(CredentialRefresh::Halt) => {
+                                            (InternalScraperStep::Error(error), None)
+                                        }
+                                        _ => (InternalScraperStep::Error(error), None),
+                                    }
+                                }
+                                _ => (InternalScraperStep::Error(error), None),
+                            }
+                        }
+                        _ => (InternalScraperStep::Error(error), None),
+                    },
                     Ok(ProviderStep::End(result)) => (InternalScraperStep::Data(result), None),
                     Ok(ProviderStep::NotInitialized) => (InternalScraperStep::Exit, None),
                     Ok(ProviderStep::Next(result, response_json)) => {
-                        let page_size = scrape.next_page_size(input.last_scrape, iteration);
-                        let maybe_next_url = scrape.from_provider_destination(
+                        let page_size = provider.next_page_size(input.last_scrape, iteration);
+                        let maybe_next_url = provider.from_provider_destination(
                             sp.destination.clone(),
                             page_size.to_owned(),
                             Some(response_json),
@@ -117,7 +159,7 @@ pub async fn scrape<'a>(
                     );
                     break;
                 }
-                let pagination_limit = scrape.max_pagination();
+                let pagination_limit = provider.max_pagination();
                 if scrape_requests.len() as u16 > pagination_limit {
                     info!(
                         "[{}] has reached its pagination limit of {}",
@@ -125,7 +167,7 @@ pub async fn scrape<'a>(
                     );
                     break;
                 }
-                scrape.wait(&sp.destination).await;
+                provider.wait(&sp.destination).await;
             }
         }
     }

@@ -8,7 +8,7 @@ use reqwest::{Response, StatusCode};
 use serde::de::DeserializeOwned;
 use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ResponseErrorContext {
     pub body: String,
     pub code: StatusCode,

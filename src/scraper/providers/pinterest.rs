@@ -68,6 +68,7 @@ const PINTEREST_BOARD_SEPARATOR: &str = "|";
 
 const URL_ROOT: &str = "https://www.pinterest.com/resource/BoardFeedResource/get";
 
+#[allow(dead_code)]
 const MAXIMUM_PAGE_SIZE: usize = 200;
 
 /// pinterest uses a page size of 25
@@ -82,7 +83,6 @@ impl RateLimitable for PinterestBoardFeed {
             .await;
     }
 }
-
 // PinterestBoard ids are made up of 2 pieces, board_url and board_id formatted in this way
 // "board_id|board_url"
 #[async_trait]
