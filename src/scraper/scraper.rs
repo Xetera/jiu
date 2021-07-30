@@ -1,16 +1,16 @@
-use std::{sync::Mutex, time::Instant};
-
 use super::{
     providers::{Provider, ProviderFailure, ProviderState, ProviderStep, ScrapeRequestInput},
-    ProviderResult, ScopedProvider,
+    ProviderCredentials, ProviderResult, ScopedProvider,
 };
 use crate::scraper::{
     providers::{CredentialRefresh, ProviderErrorHandle},
     ProviderMedia,
 };
+use async_recursion::async_recursion;
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use log::{debug, info};
+use std::{sync::Mutex, time::Instant};
 
 #[derive(Debug)]
 pub struct Scrape<'a> {
@@ -38,6 +38,77 @@ pub enum ScraperStep {
     Error(ProviderFailure),
 }
 
+fn write_provider_credentials(provider: &dyn Provider, credentials: ProviderCredentials) {
+    let creds = provider.credentials();
+    let mut credential_ref = creds.write().unwrap();
+    *credential_ref = credentials;
+}
+
+#[async_recursion]
+async fn request_page<'a>(
+    sp: &'a ScopedProvider,
+    provider: &dyn Provider,
+    state: &ProviderState,
+    input: &ScrapeRequestInput,
+) -> (InternalScraperStep, Option<ProviderState>) {
+    let iteration = state.iteration;
+    match provider.unfold(state.to_owned()).await {
+        // we have to indicate an error to the consumer and stop iteration on the next cycle
+        Err(error) => match &error {
+            ProviderFailure::HttpError(http_error) => match provider.on_error(http_error) {
+                Ok(ProviderErrorHandle::Halt) => (InternalScraperStep::Error(error), None),
+                Ok(ProviderErrorHandle::RefreshToken) => {
+                    debug!(
+                        "Triggering token refresh flow for {}",
+                        provider.id().to_string()
+                    );
+                    match provider.token_refresh().await {
+                        Ok(CredentialRefresh::Result(credentials)) => {
+                            write_provider_credentials(provider, credentials);
+                            request_page(sp, provider, state, input).await
+                        }
+                        Ok(CredentialRefresh::TryLogin) => {
+                            debug!("Triggering login flow for {}", provider.id().to_string());
+                            match provider.login().await {
+                                Ok(credentials) => {
+                                    write_provider_credentials(provider, credentials);
+                                    request_page(sp, provider, state, input).await
+                                }
+                                Err(_error) => (InternalScraperStep::Error(error), None),
+                            }
+                        }
+                        Ok(CredentialRefresh::Halt) => (InternalScraperStep::Error(error), None),
+                        _ => (InternalScraperStep::Error(error), None),
+                    }
+                }
+                _ => (InternalScraperStep::Error(error), None),
+            },
+            // TODO: reduce this nested boilerplate by implementing [From] for a result type?
+            _ => (InternalScraperStep::Error(error), None),
+        },
+        Ok(ProviderStep::End(result)) => (InternalScraperStep::Data(result), None),
+        Ok(ProviderStep::NotInitialized) => (InternalScraperStep::Exit, None),
+        Ok(ProviderStep::Next(result, response_json)) => {
+            let page_size = provider.next_page_size(input.last_scrape, iteration);
+            let maybe_next_url = provider.from_provider_destination(
+                sp.destination.clone(),
+                page_size.to_owned(),
+                Some(response_json),
+            );
+            match maybe_next_url {
+                Err(err) => (InternalScraperStep::Error(err), None),
+                Ok(url) => {
+                    let next_state = ProviderState {
+                        url: url.clone(),
+                        iteration: iteration + 1,
+                    };
+                    (InternalScraperStep::Data(result), Some(next_state))
+                }
+            }
+        }
+    }
+}
+
 pub async fn scrape<'a>(
     sp: &'a ScopedProvider,
     provider: &dyn Provider,
@@ -51,77 +122,10 @@ pub async fn scrape<'a>(
         url,
         iteration: initial_iteration,
     };
-    let mut steps = futures::stream::unfold(Some(seed), |state| async {
-        match state {
-            None => None,
-            Some(state) => {
-                debug!("Scraping URL: {:?}", state.url.0);
-                let iteration = state.iteration;
-                Some(match provider.unfold(state).await {
-                    // we have to indicate an error to the consumer and stop iteration on the next cycle
-                    Err(error) => match &error {
-                        ProviderFailure::HttpError(http_error) => {
-                            match provider.on_error(http_error) {
-                                Ok(ProviderErrorHandle::Halt) => {
-                                    (InternalScraperStep::Error(error), None)
-                                }
-                                Ok(ProviderErrorHandle::RefreshToken) => {
-                                    match provider.token_refresh().await {
-                                        Ok(CredentialRefresh::Result(credentials)) => {
-                                            let creds = provider.credentials();
-                                            let mut creds_ref = creds.write().unwrap();
-                                            *creds_ref = credentials;
-                                            // TODO: retry the original request here
-                                            (InternalScraperStep::Error(error), None)
-                                        }
-                                        Ok(CredentialRefresh::TryLogin) => {
-                                            match provider.login().await {
-                                                Ok(credentials) => {
-                                                    let creds = provider.credentials();
-                                                    let mut creds_ref = creds.write().unwrap();
-                                                    *creds_ref = credentials;
-                                                    // TODO: retry the original request here
-                                                    (InternalScraperStep::Error(error), None)
-                                                }
-                                                Err(_error) => {
-                                                    (InternalScraperStep::Error(error), None)
-                                                }
-                                            }
-                                        }
-                                        Ok(CredentialRefresh::Halt) => {
-                                            (InternalScraperStep::Error(error), None)
-                                        }
-                                        _ => (InternalScraperStep::Error(error), None),
-                                    }
-                                }
-                                _ => (InternalScraperStep::Error(error), None),
-                            }
-                        }
-                        _ => (InternalScraperStep::Error(error), None),
-                    },
-                    Ok(ProviderStep::End(result)) => (InternalScraperStep::Data(result), None),
-                    Ok(ProviderStep::NotInitialized) => (InternalScraperStep::Exit, None),
-                    Ok(ProviderStep::Next(result, response_json)) => {
-                        let page_size = provider.next_page_size(input.last_scrape, iteration);
-                        let maybe_next_url = provider.from_provider_destination(
-                            sp.destination.clone(),
-                            page_size.to_owned(),
-                            Some(response_json),
-                        );
-                        match maybe_next_url {
-                            Err(err) => (InternalScraperStep::Error(err), None),
-                            Ok(url) => {
-                                let next_state = ProviderState {
-                                    url: url.clone(),
-                                    iteration: iteration + 1,
-                                };
-                                (InternalScraperStep::Data(result), Some(next_state))
-                            }
-                        }
-                    }
-                })
-            }
-        }
+    let mut steps = futures::stream::unfold(Some(seed), |maybe_state| async {
+        let state = maybe_state?;
+        debug!("Scraping URL: {:?}", state.url.0);
+        Some(request_page(sp, provider, &state, input).await)
     })
     .boxed_local();
     let mut scrape_requests: Vec<ScrapeRequest> = vec![];
@@ -129,12 +133,14 @@ pub async fn scrape<'a>(
     while let Some(step) = steps.next().await {
         let date = Utc::now();
         match step {
-            InternalScraperStep::Exit => {}
+            InternalScraperStep::Exit => break,
             InternalScraperStep::Error(error) => {
                 scrape_requests.push(ScrapeRequest {
                     date,
                     step: ScraperStep::Error(error),
                 });
+                // no reason to continue scraping after an error
+                break;
             }
             InternalScraperStep::Data(page) => {
                 let original_image_count = page.images.len();

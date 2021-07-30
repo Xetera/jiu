@@ -5,12 +5,11 @@ use crate::scraper::{AllProviders, ProviderFailure, ScopedProvider};
 use crate::webhook::dispatcher::WebhookInteraction;
 use chrono::{DateTime, Utc};
 use dotenv::dotenv;
-use futures::TryStreamExt;
 use itertools::Itertools;
 use log::error;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{Error, Pool, Postgres};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::env;
 use std::iter::FromIterator;
 use std::str::FromStr;
@@ -159,6 +158,7 @@ pub async fn process_scrape<'a>(
                             error!("{:?}", err);
                             continue;
                         }
+
                         if let Some(status) = err.status() {
                             sqlx::query!(
                                 "INSERT INTO scrape_error (scrape_id, response_code)
@@ -194,6 +194,7 @@ pub async fn process_scrape<'a>(
                     scrape.provider.destination
                 );
             }
+            _ => {}
         }
     }
     tx.commit().await?;

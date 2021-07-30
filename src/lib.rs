@@ -1,5 +1,3 @@
-#![feature(type_alias_impl_trait)]
-#![feature(async_closure)]
 pub mod db;
 pub mod models;
 pub mod request;

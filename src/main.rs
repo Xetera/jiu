@@ -9,7 +9,7 @@ use jiu::{
     models::PendingProvider,
     scraper::{
         fetch_weverse_auth_token, scraper::scrape, AllProviders, PinterestBoardFeed, Provider,
-        ProviderCredentials, ProviderInput, ScrapeRequestInput, WeverseArtistFeed,
+        ProviderInput, ScrapeRequestInput, WeverseArtistFeed,
     },
     server::run_server,
     webhook::dispatcher::dispatch_webhooks,
@@ -18,7 +18,13 @@ use log::{debug, info};
 use nonzero_ext::nonzero;
 use reqwest::Client;
 use sqlx::{Pool, Postgres};
-use std::{collections::HashMap, error::Error, iter::FromIterator, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    error::Error,
+    iter::FromIterator,
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 use strum::IntoEnumIterator;
 
 const PROVIDER_PROCESSING_LIMIT: u32 = 8;
@@ -59,7 +65,7 @@ async fn run(arc_db: Arc<Database>) -> Result<(), Box<dyn Error + Send>> {
     let latest = latest_requests(&*arc_db, true).await?;
     println!("{:?}", latest);
     let client = Arc::new(backing_client);
-    let access_token = fetch_weverse_auth_token(&client).await?;
+    let credentials = fetch_weverse_auth_token(&client).await?;
     let pending_providers = pending_scrapes(&*arc_db).await?;
     debug!("Pending providers = {:?}", pending_providers);
 
@@ -72,7 +78,9 @@ async fn run(arc_db: Arc<Database>) -> Result<(), Box<dyn Error + Send>> {
             let input = ProviderInput {
                 client,
                 credentials: match provider_type {
-                    AllProviders::WeverseArtistFeed => Some(access_token.clone().unwrap()),
+                    AllProviders::WeverseArtistFeed => {
+                        Some(Arc::new(RwLock::new(credentials.clone().unwrap())))
+                    }
                     _ => None,
                 },
             };

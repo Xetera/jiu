@@ -313,11 +313,6 @@ impl Provider for WeverseArtistFeed {
         match &self.credentials {
             Some(credentials) => {
                 let token = credentials.read().unwrap().refresh_token.clone();
-                // ProviderCredentials {
-
-                //                 access_token: Some(token),
-                //                 refresh_token: _,
-                //             }
                 let instant = Instant::now();
                 let response = self
                     .client
@@ -380,7 +375,6 @@ impl Provider for WeverseArtistFeed {
                     ));
                 }
                 Ok(ProviderStep::End(result))
-                // todo!()
             }
             _ => {
                 info!(
@@ -428,9 +422,6 @@ impl Provider for WeverseArtistFeed {
                     access_token: out.access_token,
                     refresh_token: out.refresh_token,
                 };
-                // if something goes wrong here it should be panicking
-                // let credentials_ref = credentials.write().unwrap();
-                // *credentials_ref = credentials_result;
                 Ok(CredentialRefresh::Result(credentials_result))
             }
             _ => Ok(CredentialRefresh::TryLogin),
@@ -440,14 +431,6 @@ impl Provider for WeverseArtistFeed {
         let credentials = fetch_weverse_auth_token(&self.client)
             .await?
             .expect("Tried to authorize weverse module but the login credentials were not found");
-        // let credentials_ref = self
-        //     .credentials
-        //     .unwrap_or(Arc::new(RwLock::new(ProviderCredentials::default())))
-        //     .write()
-        //     .unwrap();
-        // credentials_ref.write()
-        // let credentials_ref.write()
-        // *credentials_ref = credentials;
         Ok(credentials)
     }
     fn credentials(&self) -> Arc<RwLock<ProviderCredentials>> {
