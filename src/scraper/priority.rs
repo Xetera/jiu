@@ -36,13 +36,13 @@ impl TryFrom<u32> for Priority {
             level,
             duration: match level {
                 // updated very frequently
-                MIN_LEVEL => hours(4),
+                MIN_LEVEL => hours(2),
                 2 => hours(8),
                 3 => hours(12),
                 4 => hours(18),
-                5 => days(1),
-                6 => days(2),
-                7 => days(3),
+                5 => hours(24),
+                6 => hours(36),
+                7 => days(2),
                 8 => days(4),
                 9 => days(5),
                 // updated very infrequently
@@ -85,12 +85,13 @@ impl Priority {
             .try_into()
             .expect(&format!("{} is not a valid priority", level))
     }
-    pub fn next(&self, history: &[ScrapeHistory]) -> Self {
+    pub fn next(self, history: &[ScrapeHistory]) -> Self {
+        let level = self.level;
         match self.change(history) {
-            None => self.clone(),
+            None => self,
             // something has gone very wrong if the level is
-            Some(PriorityChange::Up) => Priority::unchecked_clamp(self.level + 1),
-            Some(PriorityChange::Down) => Priority::unchecked_clamp(self.level - 1),
+            Some(PriorityChange::Up) => Priority::unchecked_clamp(level + 1),
+            Some(PriorityChange::Down) => Priority::unchecked_clamp(level - 1),
         }
     }
 }
