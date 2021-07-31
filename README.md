@@ -39,7 +39,7 @@ There is a customizable login flow for providers that require authorization whic
 
 The login flow is reversed engineered for providers that don't have a public API.
 
-> Juggling multiple accounts per provider is currently not supported and probably won't be as long as long as your accounts aren't getting banned (and if they are then you're sending too many requests and need to increase your rate limits).
+> Juggling multiple accounts per provider is currently not supported and probably won't be as long as your accounts aren't getting banned (and if they are then you're sending too many requests and need to increase your rate limits).
 
 Jiu will try its best to identify itself in its requests' `User-Agent` header, but will submit a fake UA for providers that gate posts behind a user agent check (currently none).
 
