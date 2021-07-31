@@ -2,14 +2,13 @@ use super::{GlobalProviderLimiter, PageSize, ScrapeUrl};
 use crate::request::HttpError;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use futures::lock::MutexGuard;
 use governor::{Jitter, Quota, RateLimiter};
 use log::{debug, error};
 use nonzero_ext::nonzero;
 use reqwest::{Client, StatusCode};
 use serde;
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex, PoisonError, RwLock};
+use std::sync::{Arc, RwLock};
 use std::{collections::HashSet, ops::Add, time::Duration};
 use strum_macros;
 use strum_macros::{EnumIter, EnumString};
@@ -108,11 +107,6 @@ impl From<HttpError> for ProviderFailure {
     }
 }
 
-// pub enum ErrorSequence<T, V> {
-//     Next(Box<dyn Fn(&T) -> BoxFuture<anyhow::Result<ErrorSequence<T, V>>>>),
-//     Done(V),
-// }
-
 pub enum CredentialRefresh {
     Result(ProviderCredentials),
     TryLogin,
@@ -120,9 +114,7 @@ pub enum CredentialRefresh {
 }
 
 pub enum ProviderErrorHandle {
-    RefreshToken, // (
-    // ErrorSequence<HttpError, ProviderCredentials>
-    // )
+    RefreshToken,
     Login,
     Halt,
 }

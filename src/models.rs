@@ -1,5 +1,5 @@
-use crate::scraper::ScopedProvider;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use crate::scraper::{Priority, ScopedProvider};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::Serialize;
 use std::fmt::Display;
 
@@ -34,6 +34,14 @@ pub struct DatabaseWebhookSource {
     pub webhook_id: i32,
     pub provider_destination: String,
 }
+
+#[derive(Debug)]
+pub struct ScrapeHistory {
+    pub priority: Priority,
+    pub date: DateTime<Utc>,
+    pub result_count: u32,
+}
+
 #[derive(Debug)]
 pub struct PendingProvider {
     pub provider: ScopedProvider,

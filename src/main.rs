@@ -7,10 +7,7 @@ use jiu::{
         submit_webhook_responses, webhooks_for_provider, Database,
     },
     models::PendingProvider,
-    scraper::{
-        fetch_weverse_auth_token, scraper::scrape, AllProviders, PinterestBoardFeed, Provider,
-        ProviderInput, ScrapeRequestInput, WeverseArtistFeed,
-    },
+    scraper::{providers, scraper::scrape, Provider, ScrapeRequestInput},
     server::run_server,
     webhook::dispatcher::dispatch_webhooks,
 };
@@ -18,14 +15,7 @@ use log::{debug, info};
 use nonzero_ext::nonzero;
 use reqwest::Client;
 use sqlx::{Pool, Postgres};
-use std::{
-    collections::HashMap,
-    error::Error,
-    iter::FromIterator,
-    sync::{Arc, RwLock},
-    time::Duration,
-};
-use strum::IntoEnumIterator;
+use std::{error::Error, sync::Arc, time::Duration};
 
 const PROVIDER_PROCESSING_LIMIT: u32 = 8;
 
@@ -59,37 +49,24 @@ async fn iter(
     Ok(())
 }
 
-async fn run(arc_db: Arc<Database>) -> Result<(), Box<dyn Error + Send>> {
-    // let arc_db = Arc::new(db);
-    let backing_client = Client::new();
-    let latest = latest_requests(&*arc_db, true).await?;
-    println!("{:?}", latest);
-    let client = Arc::new(backing_client);
-    let credentials = fetch_weverse_auth_token(&client).await?;
+async fn job_loop(arc_db: Arc<Database>, client: Arc<Client>) {
+    let mut interval = tokio::time::interval(Duration::from_secs(1u64));
+    loop {
+        interval.tick().await;
+        match run(Arc::clone(&arc_db), Arc::clone(&client)).await {}
+        ()
+    }
+}
+
+async fn run(arc_db: Arc<Database>, client: Arc<Client>) -> Result<(), Box<dyn Error + Send>> {
+    // let latest = latest_requests(&*arc_db, true).await?;
     let pending_providers = pending_scrapes(&*arc_db).await?;
     debug!("Pending providers = {:?}", pending_providers);
 
     let ctx = Context {
         db: Arc::clone(&arc_db),
     };
-    let provider_map: HashMap<AllProviders, Box<dyn Provider>> =
-        HashMap::from_iter(AllProviders::iter().map(|provider_type| {
-            let client = Arc::clone(&client);
-            let input = ProviderInput {
-                client,
-                credentials: match provider_type {
-                    AllProviders::WeverseArtistFeed => {
-                        Some(Arc::new(RwLock::new(credentials.clone().unwrap())))
-                    }
-                    _ => None,
-                },
-            };
-            let provider: Box<dyn Provider> = match &provider_type {
-                AllProviders::PinterestBoardFeed => Box::new(PinterestBoardFeed::new(input)),
-                AllProviders::WeverseArtistFeed => Box::new(WeverseArtistFeed::new(input)),
-            };
-            (provider_type, provider)
-        }));
+    let provider_map = providers(client).await?;
     let rate_limiter = RateLimiter::direct(
         Quota::per_minute(nonzero!(60u32)).allow_burst(nonzero!(PROVIDER_PROCESSING_LIMIT)),
     );
@@ -114,22 +91,23 @@ async fn run(arc_db: Arc<Database>) -> Result<(), Box<dyn Error + Send>> {
 
 async fn setup() -> anyhow::Result<()> {
     let db = Arc::new(connect().await?);
-    // let data = tokio::task::spawn_local(run(Arc::clone(&db)));
+    let client = Arc::new(Client::new());
+    let data = tokio::task::spawn_local(run(Arc::clone(&db), Arc::clone(&client)));
     match run_server(Arc::clone(&db)).await {
         Err(err) => {
             eprintln!("{:?}", err);
         }
         Ok(()) => {}
     };
-    // match data.await {
-    //     Err(err) => {
-    //         eprintln!("{:?}", err);
-    //     }
-    //     Ok(Err(err)) => {
-    //         eprintln!("{:?}", err);
-    //     }
-    //     _ => {}
-    // };
+    match data.await {
+        Err(err) => {
+            eprintln!("{:?}", err);
+        }
+        Ok(Err(err)) => {
+            eprintln!("{:?}", err);
+        }
+        _ => {}
+    };
     Ok(())
 }
 

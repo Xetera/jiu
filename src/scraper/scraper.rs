@@ -10,7 +10,7 @@ use async_recursion::async_recursion;
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use log::{debug, info};
-use std::{sync::Mutex, time::Instant};
+use std::time::Instant;
 
 #[derive(Debug)]
 pub struct Scrape<'a> {

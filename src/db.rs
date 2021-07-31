@@ -251,7 +251,7 @@ pub async fn submit_webhook_responses(
 
 pub async fn latest_requests(
     db: &Database,
-    only_with_media: bool,
+    _only_with_media: bool,
 ) -> anyhow::Result<Vec<ScrapeRequestWithMedia>> {
     let results = dbg!(
         sqlx::query!(

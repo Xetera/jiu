@@ -1,6 +1,6 @@
 use actix_files as fs;
 use actix_web::{
-    get, http,
+    get,
     web::{self, Data},
     App, HttpResponse, HttpServer, Responder,
 };

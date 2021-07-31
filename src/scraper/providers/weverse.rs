@@ -1,3 +1,12 @@
+use super::{
+    default_jitter, default_quota, AllProviders, CredentialRefresh, GlobalProviderLimiter,
+    PageSize, Pagination, Provider, ProviderCredentials, ProviderErrorHandle, ProviderFailure,
+    ProviderInput, ProviderState, ProviderStep, RateLimitable, ScrapeUrl,
+};
+use crate::{
+    request::{parse_successful_response, request_default_headers, HttpError},
+    scraper::{providers::ProviderMediaType, ProviderMedia, ProviderResult},
+};
 use async_trait::async_trait;
 use bimap::{BiHashMap, BiMap};
 use chrono::{DateTime, Utc};
@@ -13,19 +22,8 @@ use sha1::Sha1;
 use std::{
     env,
     iter::FromIterator,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, RwLock},
     time::Instant,
-};
-
-use crate::{
-    request::{parse_successful_response, request_default_headers, HttpError},
-    scraper::{providers::ProviderMediaType, ProviderMedia, ProviderResult},
-};
-
-use super::{
-    default_jitter, default_quota, AllProviders, CredentialRefresh, GlobalProviderLimiter,
-    PageSize, Pagination, Provider, ProviderCredentials, ProviderErrorHandle, ProviderFailure,
-    ProviderInput, ProviderState, ProviderStep, RateLimitable, ScrapeUrl,
 };
 
 /// https://gist.github.com/Xetera/aa59e84f3959a37c16a3309b5d9ab5a0
