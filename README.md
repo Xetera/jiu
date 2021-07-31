@@ -59,18 +59,17 @@ Jiu is capable of sending webhooks to multiple destinations when an update for a
   "media": [
     {
       "type": "image",
-      "media_url": "https://cdn-contents-web.weverse.io/user/xlx2048/jpg/76b26c9cb3a543698893d410cb244a01973.jpg",
-      "page_url": "https://weverse.io/dreamcatcher/artist/1666332291423293?photoId=217518938",
-      "post_date": "2021-07-26T05:33:48Z",
-      "reference_url": "https://weverse.io/dreamcatcher/artist/1666332291423293?photoId=217518938",
-      "unique_identifier": "217518938",
+      "media_url": "https://cdn-contents-web.weverse.io/user/xlx2048/jpg/8a0561f034564758b77551745d7d62c6349.jpg",
+      "page_url": "https://weverse.io/dreamcatcher/artist/1666051913313967?photoId=216521736",
+      "post_date": "2021-07-23T01:30:21Z",
+      "reference_url": "https://weverse.io/dreamcatcher/artist/1666051913313967?photoId=216521736",
+      "unique_identifier": "216521736",
       "provider_metadata": {
-        "post_id": 241523,
-        "author_id": 63,
-        "author_name": "시연",
-        "height": 2048,
-        "width": 3072,
-        "thumbnail_url": "https://cdn-contents-web.weverse.io/user/mx750/jpg/76b26c9cb3a543698893d410cb244a01973.jpg"
+        "author_id": 61,
+        "author_name": "지유",
+        "height": 1920,
+        "width": 2443,
+        "thumbnail_url": "https://cdn-contents-web.weverse.io/user/mx750/jpg/8a0561f034564758b77551745d7d62c6349.jpg"
       }
     }
   ]
