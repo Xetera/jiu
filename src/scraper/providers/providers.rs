@@ -1,14 +1,15 @@
 use super::{GlobalProviderLimiter, PageSize, ScrapeUrl};
 use crate::request::HttpError;
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use governor::{Jitter, Quota, RateLimiter};
 use log::{debug, error};
 use nonzero_ext::nonzero;
+use parking_lot::RwLock;
 use reqwest::{Client, StatusCode};
 use serde;
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::{collections::HashSet, ops::Add, time::Duration};
 use strum_macros;
 use strum_macros::{EnumIter, EnumString};
@@ -27,7 +28,7 @@ pub struct ProviderMedia {
     pub _type: ProviderMediaType,
     pub media_url: String,
     pub page_url: Option<String>,
-    pub post_date: Option<DateTime<Utc>>,
+    pub post_date: Option<NaiveDateTime>,
     // where the image is coming from
     pub reference_url: Option<String>,
     pub unique_identifier: String,
@@ -98,7 +99,7 @@ pub struct ProviderState {
 
 pub struct ScrapeRequestInput {
     pub latest_data: HashSet<String>,
-    pub last_scrape: Option<DateTime<Utc>>,
+    pub last_scrape: Option<NaiveDateTime>,
 }
 
 impl From<HttpError> for ProviderFailure {
@@ -191,7 +192,7 @@ pub trait Provider: Sync + Send + RateLimitable {
     /// Destinations that haven't been scraped before should be using a larger
     /// page size.
     /// iteration is 0 indexed
-    fn next_page_size(&self, last_scraped: Option<DateTime<Utc>>, iteration: usize) -> PageSize;
+    fn next_page_size(&self, last_scraped: Option<NaiveDateTime>, iteration: usize) -> PageSize;
     /// The maximum number of times a resource can be paginated before exiting.
     /// This value is ignored if the context has no images aka the resource
     /// is being scraped for the first time

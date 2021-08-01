@@ -7,7 +7,7 @@ use crate::scraper::{
     ProviderMedia,
 };
 use async_recursion::async_recursion;
-use chrono::{DateTime, Utc};
+use chrono::{NaiveDateTime, Utc};
 use futures::StreamExt;
 use log::{debug, info};
 use std::time::Instant;
@@ -20,7 +20,7 @@ pub struct Scrape<'a> {
 
 #[derive(Debug)]
 pub struct ScrapeRequest {
-    pub date: DateTime<Utc>,
+    pub date: NaiveDateTime,
     pub step: ScraperStep,
 }
 
@@ -40,7 +40,7 @@ pub enum ScraperStep {
 
 fn write_provider_credentials(provider: &dyn Provider, credentials: ProviderCredentials) {
     let creds = provider.credentials();
-    let mut credential_ref = creds.write().unwrap();
+    let mut credential_ref = creds.write();
     *credential_ref = credentials;
 }
 
@@ -90,11 +90,13 @@ async fn request_page<'a>(
         Ok(ProviderStep::NotInitialized) => (InternalScraperStep::Exit, None),
         Ok(ProviderStep::Next(result, response_json)) => {
             let page_size = provider.next_page_size(input.last_scrape, iteration);
+
             let maybe_next_url = provider.from_provider_destination(
                 sp.destination.clone(),
                 page_size.to_owned(),
                 Some(response_json),
             );
+
             match maybe_next_url {
                 Err(err) => (InternalScraperStep::Error(err), None),
                 Ok(url) => {
@@ -118,20 +120,24 @@ pub async fn scrape<'a>(
     let page_size = provider.next_page_size(input.last_scrape, initial_iteration);
     let url =
         provider.from_provider_destination(sp.destination.clone(), page_size.to_owned(), None)?;
+
     let seed = ProviderState {
         url,
         iteration: initial_iteration,
     };
+
     let mut steps = futures::stream::unfold(Some(seed), |maybe_state| async {
         let state = maybe_state?;
         debug!("Scraping URL: {:?}", state.url.0);
         Some(request_page(sp, provider, &state, input).await)
     })
     .boxed_local();
+
     let mut scrape_requests: Vec<ScrapeRequest> = vec![];
     let scrape_start = Instant::now();
+
     while let Some(step) = steps.next().await {
-        let date = Utc::now();
+        let date = Utc::now().naive_utc();
         match step {
             InternalScraperStep::Exit => break,
             InternalScraperStep::Error(error) => {
@@ -153,10 +159,12 @@ pub async fn scrape<'a>(
                     .collect::<Vec<ProviderMedia>>();
                 let new_image_count = images.len();
                 debug!("Found {} new images in {}", images.len(), sp);
+
                 scrape_requests.push(ScrapeRequest {
                     date,
                     step: ScraperStep::Data(ProviderResult { images, ..page }),
                 });
+
                 let has_known_image = new_image_count != original_image_count;
                 if has_known_image {
                     info!(
@@ -186,13 +194,7 @@ pub async fn scrape<'a>(
         if scrape_count != 1 { "s" } else { "" }
     );
     Ok(Scrape {
-        provider: sp.to_owned(),
+        provider: &sp,
         requests: scrape_requests,
     })
 }
-
-// pub fn maximize_element_distance(sps: Vec<ScopedProvider>) -> Vec<ScopedProvider> {
-//     sps.group_by(|a, b| a.destination == b.destination)
-//         .collect::<Vec<Vec<ScopedProvider>>>();
-//     sps
-// }

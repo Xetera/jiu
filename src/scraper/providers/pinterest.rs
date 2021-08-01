@@ -8,7 +8,7 @@ use crate::{
     scraper::providers::ProviderMediaType,
 };
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc, time::Instant};
@@ -99,7 +99,7 @@ impl Provider for PinterestBoardFeed {
     fn id(&self) -> AllProviders {
         AllProviders::PinterestBoardFeed
     }
-    fn next_page_size(&self, last_scraped: Option<DateTime<Utc>>, _iteration: usize) -> PageSize {
+    fn next_page_size(&self, last_scraped: Option<NaiveDateTime>, _iteration: usize) -> PageSize {
         PageSize(match last_scraped {
             // TODO: fix
             None => 20,

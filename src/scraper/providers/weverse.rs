@@ -9,22 +9,18 @@ use crate::{
 };
 use async_trait::async_trait;
 use bimap::{BiHashMap, BiMap};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use governor::Quota;
 use lazy_static::lazy_static;
 use log::info;
+use parking_lot::RwLock;
 use rand::rngs::OsRng;
 use regex::Regex;
 use reqwest::Client;
 use rsa::{PaddingScheme, PublicKey, RSAPublicKey};
 use serde::{Deserialize, Serialize};
 use sha1::Sha1;
-use std::{
-    env,
-    iter::FromIterator,
-    sync::{Arc, RwLock},
-    time::Instant,
-};
+use std::{env, iter::FromIterator, sync::Arc, time::Instant};
 
 /// https://gist.github.com/Xetera/aa59e84f3959a37c16a3309b5d9ab5a0
 async fn get_public_key(client: &Client) -> anyhow::Result<RSAPublicKey> {
@@ -156,7 +152,7 @@ pub struct WeversePost {
     // community: WeverseCommunity,
     community_user: WeverseCommunityUser,
     photos: Option<Vec<WeversePhoto>>,
-    created_at: DateTime<Utc>,
+    created_at: NaiveDateTime,
 }
 
 #[derive(Debug, Deserialize)]
@@ -268,7 +264,7 @@ impl Provider for WeverseArtistFeed {
         AllProviders::WeverseArtistFeed
     }
 
-    fn next_page_size(&self, last_scrape: Option<DateTime<Utc>>, iteration: usize) -> PageSize {
+    fn next_page_size(&self, last_scrape: Option<NaiveDateTime>, iteration: usize) -> PageSize {
         PageSize(match last_scrape {
             None => MAX_PAGESIZE,
             Some(_) => {
@@ -310,7 +306,7 @@ impl Provider for WeverseArtistFeed {
     async fn unfold(&self, state: ProviderState) -> Result<ProviderStep, ProviderFailure> {
         match &self.credentials {
             Some(credentials) => {
-                let token = credentials.read().unwrap().refresh_token.clone();
+                let token = credentials.read().refresh_token.clone();
                 let instant = Instant::now();
                 let response = self
                     .client
@@ -401,7 +397,7 @@ impl Provider for WeverseArtistFeed {
         match &self.credentials {
             // we already have a refresh token from a previous login attempt?
             Some(credentials) => {
-                let refresh_token = credentials.read().unwrap().refresh_token.clone();
+                let refresh_token = credentials.read().refresh_token.clone();
 
                 let input = WeverseAuthorizeInput::TokenRefresh {
                     grant_type: "refresh_token".to_owned(),

@@ -6,6 +6,7 @@ use governor::state::DirectStateStore;
 use governor::state::InMemoryState;
 use governor::state::NotKeyed;
 use governor::RateLimiter;
+use parking_lot::RwLock;
 pub use pinterest::*;
 pub use providers::*;
 use reqwest::Client;
@@ -13,7 +14,6 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::iter::FromIterator;
 use std::sync::Arc;
-use std::sync::RwLock;
 use strum::IntoEnumIterator;
 pub use weverse::*;
 
@@ -34,7 +34,7 @@ pub type LocalProviderLimiter = RateLimiter<dyn DirectStateStore, InMemoryState,
 /// Identifier for a specific section of a site
 /// [name: pinterest.board_feed]
 /// [destination: <A unique identifier scoped to pinterest>]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct ScopedProvider {
     pub name: AllProviders,
     pub destination: String,

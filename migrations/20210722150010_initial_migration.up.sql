@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS provider_resource(
   priority INTEGER NOT NULL DEFAULT 5 CHECK(priority >= 1 AND priority <= 10),
   last_scrape TIMESTAMP WITHOUT TIME ZONE NULL,
   -- the date last scrape was requested, this acts a lock to prevent resources from being accessed multiple times 
-  requested_scrape TIMESTAMP WITHOUT TIME ZONE NULL,
+  last_queue TIMESTAMP WITHOUT TIME ZONE NULL,
+  created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
   UNIQUE(destination, name)
 );
 
@@ -94,3 +95,5 @@ CREATE TABLE IF NOT EXISTS webhook_invocation(
   response_delay INTEGER,
   invoked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX ON scrape (provider_destination, provider_name);

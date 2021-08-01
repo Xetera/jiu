@@ -63,24 +63,6 @@ pub struct ProcessedScrape {
     scrape_id: i32,
 }
 
-pub async fn pending_scrapes(db: &Database) -> anyhow::Result<Vec<PendingProvider>> {
-    Ok(
-        sqlx::query!("SELECT * FROM provider_resource WHERE enabled = True")
-            .map(|row| PendingProvider {
-                provider: ScopedProvider {
-                    destination: row.destination,
-                    name: AllProviders::from_str(&row.name).expect(&format!(
-                        "Got {} from the database which is not a valid provider name",
-                        &row.name
-                    )),
-                },
-                last_scrape: row.last_scrape.map(|r| DateTime::from_utc(r, Utc)),
-            })
-            .fetch_all(db)
-            .await?,
-    )
-}
-
 pub async fn process_scrape<'a>(
     db: &Database,
     scrape: &Scrape<'a>,
@@ -115,7 +97,7 @@ pub async fn process_scrape<'a>(
                     response_code as u32,
                     // unsafe downcast from u128? I hope the request doesn't take 2 billion miliseconds kekw
                     provider_result.response_delay.as_millis() as u32,
-                    request.date.naive_utc(),
+                    request.date,
                     i as u32
                 ).fetch_one(&mut tx).await?;
                 for media in provider_result.images.iter() {
@@ -139,8 +121,8 @@ pub async fn process_scrape<'a>(
                         media.page_url,
                         media.reference_url,
                         media.unique_identifier,
-                        media.post_date.map(|date| date.naive_utc()),
-                        request.date.naive_utc()
+                        media.post_date,
+                        request.date
                     )
                     .fetch_optional(&mut tx)
                     .await?;

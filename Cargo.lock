@@ -1475,6 +1475,7 @@ dependencies = [
  "lazy_static",
  "log",
  "nonzero_ext",
+ "parking_lot",
  "rand 0.8.4",
  "regex",
  "reqwest",

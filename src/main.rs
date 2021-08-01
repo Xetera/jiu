@@ -3,19 +3,21 @@ use futures::future::join_all;
 use governor::{Jitter, Quota, RateLimiter};
 use jiu::{
     db::{
-        connect, latest_media_ids_from_provider, latest_requests, pending_scrapes, process_scrape,
-        submit_webhook_responses, webhooks_for_provider, Database,
+        connect, latest_media_ids_from_provider, process_scrape, submit_webhook_responses,
+        webhooks_for_provider, Database,
     },
     models::PendingProvider,
+    scheduler::{mark_as_scheduled, pending_scrapes, RunningProviders},
     scraper::{providers, scraper::scrape, Provider, ScrapeRequestInput},
     server::run_server,
     webhook::dispatcher::dispatch_webhooks,
 };
-use log::{debug, info};
+use log::{debug, error, info};
 use nonzero_ext::nonzero;
+use parking_lot::RwLock;
 use reqwest::Client;
 use sqlx::{Pool, Postgres};
-use std::{error::Error, sync::Arc, time::Duration};
+use std::{collections::HashSet, error::Error, sync::Arc, time::Duration};
 
 const PROVIDER_PROCESSING_LIMIT: u32 = 8;
 
@@ -30,37 +32,48 @@ async fn iter(
 ) -> anyhow::Result<()> {
     let sp = pending.provider;
     let latest_data = latest_media_ids_from_provider(&ctx.db, &sp).await?;
-    debug!("Providers being scraped: {:?}", latest_data);
     let step = ScrapeRequestInput {
         latest_data,
         last_scrape: pending.last_scrape,
     };
     let result = scrape(&sp, &*provider, &step).await?;
-    info!("Scraped");
     let processed_scrape = process_scrape(&ctx.db, &result).await?;
 
-    info!("Processed scrape");
     let webhooks = webhooks_for_provider(&ctx.db, &sp).await?;
-    info!("Got webhooks");
     let webhook_interactions = dispatch_webhooks(&result, webhooks).await;
-    info!("Dispatched webhooks");
     submit_webhook_responses(&ctx.db, processed_scrape, webhook_interactions).await?;
-    info!("Submitted webhook responses");
     Ok(())
 }
 
 async fn job_loop(arc_db: Arc<Database>, client: Arc<Client>) {
-    let mut interval = tokio::time::interval(Duration::from_secs(1u64));
+    let mut interval = tokio::time::interval(Duration::from_secs(10));
+    let running_providers: RwLock<RunningProviders> = RwLock::new(HashSet::default());
     loop {
         interval.tick().await;
-        match run(Arc::clone(&arc_db), Arc::clone(&client)).await {}
+        match pending_scrapes(&arc_db, &running_providers).await {
+            Ok(pending) => {
+                if let Err(err) = mark_as_scheduled(&arc_db, &pending, &running_providers).await {
+                    error!("{:?}", err);
+                    continue;
+                };
+                if let Err(err) = run(Arc::clone(&arc_db), Arc::clone(&client), pending).await {
+                    error!("{:?}", err);
+                    continue;
+                }
+            }
+            _ => {}
+        };
         ()
     }
 }
 
-async fn run(arc_db: Arc<Database>, client: Arc<Client>) -> Result<(), Box<dyn Error + Send>> {
+async fn run(
+    arc_db: Arc<Database>,
+    client: Arc<Client>,
+    pending_providers: Vec<PendingProvider>,
+) -> Result<(), Box<dyn Error + Send>> {
     // let latest = latest_requests(&*arc_db, true).await?;
-    let pending_providers = pending_scrapes(&*arc_db).await?;
+    // let pending_providers = pending_scrapes(&*arc_db).await?;
     debug!("Pending providers = {:?}", pending_providers);
 
     let ctx = Context {
@@ -92,22 +105,15 @@ async fn run(arc_db: Arc<Database>, client: Arc<Client>) -> Result<(), Box<dyn E
 async fn setup() -> anyhow::Result<()> {
     let db = Arc::new(connect().await?);
     let client = Arc::new(Client::new());
-    let data = tokio::task::spawn_local(run(Arc::clone(&db), Arc::clone(&client)));
+    let data = tokio::task::spawn_local(job_loop(Arc::clone(&db), Arc::clone(&client)));
     match run_server(Arc::clone(&db)).await {
         Err(err) => {
             eprintln!("{:?}", err);
         }
         Ok(()) => {}
     };
-    match data.await {
-        Err(err) => {
-            eprintln!("{:?}", err);
-        }
-        Ok(Err(err)) => {
-            eprintln!("{:?}", err);
-        }
-        _ => {}
-    };
+    // infinite
+    data.await;
     Ok(())
 }
 
