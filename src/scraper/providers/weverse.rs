@@ -1,7 +1,7 @@
 use super::{
     default_jitter, default_quota, AllProviders, CredentialRefresh, PageSize, Pagination, Provider,
     ProviderCredentials, ProviderErrorHandle, ProviderFailure, ProviderInput, ProviderState,
-    ProviderStep, RateLimitable, ScrapeUrl,
+    ProviderStep, RateLimitable, ScrapeUrl, SharedCredentials,
 };
 use crate::{
     request::{parse_successful_response, request_default_headers, HttpError},
@@ -210,7 +210,7 @@ pub struct WeversePage {
 // #[derive(Clone)]
 pub struct WeverseArtistFeed {
     pub client: Arc<Client>,
-    pub credentials: Option<Arc<RwLock<ProviderCredentials>>>,
+    pub credentials: Option<SharedCredentials>,
     pub rate_limiter: UnscopedLimiter,
 }
 

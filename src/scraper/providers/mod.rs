@@ -1,5 +1,6 @@
 pub mod pinterest;
 mod providers;
+pub mod united_cube;
 pub mod weverse;
 use parking_lot::RwLock;
 pub use pinterest::*;

@@ -22,6 +22,8 @@ pub enum ProviderMediaType {
     Video,
 }
 
+pub type SharedCredentials = Arc<RwLock<ProviderCredentials>>;
+
 /// Placeholder for images that may contain more metadata in the future?
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderMedia {
@@ -255,4 +257,6 @@ pub enum AllProviders {
     PinterestBoardFeed,
     #[strum(serialize = "weverse.artist_feed")]
     WeverseArtistFeed,
+    #[strum(serialize = "united_cube.artist_feed")]
+    UnitedCubeArtistFeed,
 }
