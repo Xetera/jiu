@@ -1,7 +1,8 @@
-use super::{GlobalProviderLimiter, PageSize, ScrapeUrl};
+use super::{PageSize, ScrapeUrl};
 use crate::request::HttpError;
+use crate::scheduler::UnscopedLimiter;
 use async_trait::async_trait;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
 use governor::{Jitter, Quota, RateLimiter};
 use log::{debug, error};
 use nonzero_ext::nonzero;
@@ -147,7 +148,7 @@ pub trait RateLimitable {
     /// The default rate limiter implementation
     /// This currently only supports global rate limiters
     /// but may need to be changed to support local ones as well
-    fn rate_limiter() -> GlobalProviderLimiter
+    fn rate_limiter() -> UnscopedLimiter
     where
         Self: Sized,
     {

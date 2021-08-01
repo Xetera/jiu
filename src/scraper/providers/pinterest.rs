@@ -1,14 +1,14 @@
 use super::{
-    default_jitter, AllProviders, GlobalProviderLimiter, PageSize, Pagination, Provider,
-    ProviderFailure, ProviderInput, ProviderMedia, ProviderResult, ProviderState, ProviderStep,
-    RateLimitable, ScrapeUrl,
+    default_jitter, AllProviders, PageSize, Pagination, Provider, ProviderFailure, ProviderInput,
+    ProviderMedia, ProviderResult, ProviderState, ProviderStep, RateLimitable, ScrapeUrl,
 };
 use crate::{
     request::{parse_successful_response, request_default_headers},
+    scheduler::UnscopedLimiter,
     scraper::providers::ProviderMediaType,
 };
 use async_trait::async_trait;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc, time::Instant};
@@ -61,7 +61,7 @@ struct PinterestRequestDict<'a> {
 // #[derive(Clone)]
 pub struct PinterestBoardFeed {
     pub client: Arc<Client>,
-    pub rate_limiter: GlobalProviderLimiter,
+    pub rate_limiter: UnscopedLimiter,
 }
 
 const PINTEREST_BOARD_SEPARATOR: &str = "|";

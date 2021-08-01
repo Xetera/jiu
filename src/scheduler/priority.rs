@@ -5,16 +5,16 @@ use std::{
 };
 
 #[derive(Debug)]
-pub struct InvalidPriority(u32);
+pub struct InvalidPriority(i32);
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct Priority {
-    level: u32,
+    level: i32,
     duration: Duration,
 }
 
-const MIN_LEVEL: u32 = 1;
-const MAX_LEVEL: u32 = 10;
+const MIN_LEVEL: i32 = 1;
+const MAX_LEVEL: i32 = 10;
 
 const HOURS_BY_SECS: u64 = 60 * 60;
 
@@ -26,7 +26,7 @@ const fn days(num: u64) -> Duration {
     Duration::from_secs(HOURS_BY_SECS * 24 * num)
 }
 
-fn level_to_duration(level: u32) -> Duration {
+fn level_to_duration(level: i32) -> Duration {
     match level {
         // updated very frequently
         MIN_LEVEL => hours(2),
@@ -44,9 +44,9 @@ fn level_to_duration(level: u32) -> Duration {
     }
 }
 
-impl TryFrom<u32> for Priority {
+impl TryFrom<i32> for Priority {
     type Error = InvalidPriority;
-    fn try_from(level: u32) -> Result<Self, Self::Error> {
+    fn try_from(level: i32) -> Result<Self, Self::Error> {
         if level < MIN_LEVEL || level > MAX_LEVEL {
             return Err(InvalidPriority(level));
         };
@@ -54,6 +54,12 @@ impl TryFrom<u32> for Priority {
             level,
             duration: level_to_duration(level),
         })
+    }
+}
+
+impl From<Priority> for i32 {
+    fn from(priority: Priority) -> Self {
+        priority.level.try_into().unwrap()
     }
 }
 
@@ -88,19 +94,25 @@ impl Priority {
             None
         }
     }
-    pub fn unchecked_clamp(level: u32) -> Self {
+    pub fn unchecked_clamp(level: i32) -> Self {
         level
             .clamp(MIN_LEVEL, MIN_LEVEL)
             .try_into()
             // something has gone very wrong if the level is out of bounds
             .expect(&format!("{} is not a valid priority", level))
     }
-    pub fn next(self, history: &[ScrapeHistory]) -> Self {
+    /// Decide the next priority based on the the recent scrape history of the
+    /// provider priority.
+    /// This function specifically borrows self as the result is compared with self
+    /// to detect change
+    pub fn next(&self, history: &[ScrapeHistory]) -> Self {
         let level = self.level;
         match self.change(history) {
-            None => self,
+            None => *self,
             Some(PriorityChange::Up) => Priority::unchecked_clamp(level + 1),
             Some(PriorityChange::Down) => Priority::unchecked_clamp(level - 1),
         }
     }
 }
+
+pub fn update_priority() {}

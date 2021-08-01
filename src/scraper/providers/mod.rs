@@ -1,11 +1,6 @@
 pub mod pinterest;
 mod providers;
 pub mod weverse;
-use governor::clock::QuantaClock;
-use governor::state::DirectStateStore;
-use governor::state::InMemoryState;
-use governor::state::NotKeyed;
-use governor::RateLimiter;
 use parking_lot::RwLock;
 pub use pinterest::*;
 pub use providers::*;
@@ -23,13 +18,6 @@ pub struct ScrapeUrl(pub String);
 
 #[derive(Debug, Copy, Clone)]
 pub struct PageSize(usize);
-
-/// Most providers use rate limited at the domain level and not at the page level
-/// in order to prevent exceeding rate limits imposed by webservers
-pub type GlobalProviderLimiter = RateLimiter<NotKeyed, InMemoryState, QuantaClock>;
-/// Some providers can use rate limiting at the page level imposed by set limits of API keys
-#[allow(dead_code)]
-pub type LocalProviderLimiter = RateLimiter<dyn DirectStateStore, InMemoryState, QuantaClock>;
 
 /// Identifier for a specific section of a site
 /// [name: pinterest.board_feed]

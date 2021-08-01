@@ -1,10 +1,12 @@
 use crate::{
     db::Database,
-    models::PendingProvider,
+    models::{PendingProvider, ScrapeHistory},
+    scheduler::Priority,
     scraper::{AllProviders, ScopedProvider},
 };
+use itertools::Itertools;
 use parking_lot::RwLock;
-use std::{collections::HashSet, str::FromStr};
+use std::{collections::HashSet, convert::TryInto, str::FromStr};
 
 pub type RunningProviders = HashSet<ScopedProvider>;
 
@@ -28,6 +30,42 @@ pub async fn pending_scrapes(
     // back to the exact same date
     .fetch_all(db)
     .await?;
+
+    let running = running_providers.read();
+    Ok(potential_target_providers
+        .into_iter()
+        .map(|row| PendingProvider {
+            id: row.id,
+            provider: ScopedProvider {
+                destination: row.destination,
+                name: AllProviders::from_str(&row.name).unwrap(),
+            },
+            last_scrape: row.last_scrape,
+        })
+        .filter(|sp| !running.contains(&sp.provider))
+        .collect::<Vec<_>>())
+}
+
+pub async fn mark_as_scheduled(
+    db: &Database,
+    pending_providers: &[PendingProvider],
+    running_providers: &RwLock<RunningProviders>,
+) -> anyhow::Result<()> {
+    sqlx::query!(
+        "UPDATE provider_resource SET last_queue = NOW() WHERE id = ANY($1)",
+        &pending_providers.iter().map(|pv| pv.id).collect::<Vec<_>>(),
+    )
+    .fetch_optional(db)
+    .await?;
+    let mut handle = running_providers.write();
+    handle.extend(pending_providers.iter().map(|pp| pp.provider.clone()));
+    Ok(())
+}
+
+pub async fn update_priorities(
+    db: &Database,
+    pending_providers: &[PendingProvider],
+) -> anyhow::Result<()> {
     let providers = sqlx::query!(
         "SELECT
             pr.id,
@@ -51,67 +89,46 @@ pub async fn pending_scrapes(
             ORDER BY last_scrape desc, id
             LIMIT 10
         ) s on True
-        WHERE pr.enabled"
+        WHERE pr.enabled AND pr.id = ANY($1)",
+        &pending_providers.iter().map(|pp| pp.id).collect::<Vec<_>>()
     )
     .fetch_all(db)
     .await?;
-    // let provider_results = providers
-    //     .into_iter()
-    //     .into_group_map_by(|rec| (rec.name, rec.destination));
 
-    let running = running_providers.read();
-    Ok(potential_target_providers
-        .into_iter()
-        .map(|row| PendingProvider {
-            id: row.id,
-            provider: ScopedProvider {
-                destination: row.destination,
-                name: AllProviders::from_str(&row.name).unwrap(),
-            },
-            last_scrape: row.last_scrape,
-        })
-        .filter(|sp| !running.contains(&sp.provider))
-        .collect::<Vec<_>>())
-    // let mut out: Vec<ScrapeHistory> = vec![];
-    // for ((name, destination), rows) in provider_results {
-    //     let a = rows.iter().group_by(|a| a.ed).collect();
-    //     let rows_ = rows.iter().map(|row| ScrapeHistory {
-    //         date: row.last_scrape,
-    //         priority: Priority::unchecked_clamp(row.priority.unwrap().try_into().unwrap()),
-    //         result_count: row,
-    //         provider: ScopedProvider {
-    //             destination,
-    //             name: AllProviders::from_str(&name).unwrap(),
-    //         },
-    //     });
-    //     out.extend(rows_);
-    //     // .map(|p| )
-    //     // value.iter().map(|r| r)
-    // }
-    // acc.push(ScrapeHistory {
-    //     date: b.date,
-    //     priority: b.priority,
-    //     provider: ,
-    // });
-    // acc
-    // let results = sqlx::query!("SELECT * FROM scrape WHERE id = ANY($1)", &provider_ids[..])
-    //     .fetch_all(db)
-    //     .await?;
-}
+    let groups = providers.iter().group_by(|row| {
+        (
+            row.id,
+            row.name.clone(),
+            row.destination.clone(),
+            row.resource_priority,
+        )
+    });
+    for ((id, name, destination, resource_priority), rows) in &groups {
+        // let a = rows.group_by(|a| a.ed).collect();
+        let histories = rows
+            .filter(|row| row.last_scrape.is_some())
+            .map(|row| ScrapeHistory {
+                date: row.last_scrape.unwrap(),
+                priority: Priority::unchecked_clamp(row.priority.unwrap()),
+                result_count: row.discovery_count.unwrap_or(0i64).try_into().unwrap(),
+                provider: ScopedProvider {
+                    destination: destination.clone(),
+                    name: AllProviders::from_str(&name).unwrap(),
+                },
+            })
+            .collect::<Vec<ScrapeHistory>>();
 
-pub async fn mark_as_scheduled(
-    db: &Database,
-    pending_providers: &[PendingProvider],
-    running_providers: &RwLock<RunningProviders>,
-) -> anyhow::Result<()> {
-    sqlx::query!(
-        "UPDATE provider_resource SET last_queue = NOW() WHERE id = ANY($1)",
-        &pending_providers.iter().map(|pv| pv.id).collect::<Vec<_>>(),
-        // &provider_ids[..]
-    )
-    .fetch_optional(db)
-    .await?;
-    let mut handle = running_providers.write();
-    handle.extend(pending_providers.iter().map(|pp| pp.provider.clone()));
+        let provider_priority = Priority::unchecked_clamp(resource_priority);
+        let next_priority = provider_priority.next(&histories[..]);
+        if provider_priority != next_priority {
+            sqlx::query!(
+                "UPDATE provider_resource SET priority = $1 where id = $2 returning id",
+                i32::from(next_priority),
+                id
+            )
+            .fetch_one(db)
+            .await?;
+        }
+    }
     Ok(())
 }

@@ -1,9 +1,8 @@
-use crate::models::{DatabaseWebhook, PendingProvider, ScrapeRequestMedia, ScrapeRequestWithMedia};
+use crate::models::{DatabaseWebhook, ScrapeRequestMedia, ScrapeRequestWithMedia};
 use crate::request::HttpError;
 use crate::scraper::scraper::{Scrape, ScraperStep};
-use crate::scraper::{AllProviders, ProviderFailure, ScopedProvider};
+use crate::scraper::{ProviderFailure, ScopedProvider};
 use crate::webhook::dispatcher::WebhookInteraction;
-use chrono::{DateTime, Utc};
 use dotenv::dotenv;
 use itertools::Itertools;
 use log::error;
@@ -12,7 +11,6 @@ use sqlx::{Error, Pool, Postgres};
 use std::collections::HashSet;
 use std::env;
 use std::iter::FromIterator;
-use std::str::FromStr;
 
 pub type Database = Pool<Postgres>;
 

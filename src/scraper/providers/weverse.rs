@@ -1,15 +1,16 @@
 use super::{
-    default_jitter, default_quota, AllProviders, CredentialRefresh, GlobalProviderLimiter,
-    PageSize, Pagination, Provider, ProviderCredentials, ProviderErrorHandle, ProviderFailure,
-    ProviderInput, ProviderState, ProviderStep, RateLimitable, ScrapeUrl,
+    default_jitter, default_quota, AllProviders, CredentialRefresh, PageSize, Pagination, Provider,
+    ProviderCredentials, ProviderErrorHandle, ProviderFailure, ProviderInput, ProviderState,
+    ProviderStep, RateLimitable, ScrapeUrl,
 };
 use crate::{
     request::{parse_successful_response, request_default_headers, HttpError},
+    scheduler::UnscopedLimiter,
     scraper::{providers::ProviderMediaType, ProviderMedia, ProviderResult},
 };
 use async_trait::async_trait;
 use bimap::{BiHashMap, BiMap};
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
 use governor::Quota;
 use lazy_static::lazy_static;
 use log::info;
@@ -210,7 +211,7 @@ pub struct WeversePage {
 pub struct WeverseArtistFeed {
     pub client: Arc<Client>,
     pub credentials: Option<Arc<RwLock<ProviderCredentials>>>,
-    pub rate_limiter: GlobalProviderLimiter,
+    pub rate_limiter: UnscopedLimiter,
 }
 
 lazy_static! {

@@ -1,25 +1,24 @@
 use actix_web;
 use futures::future::join_all;
-use governor::{Jitter, Quota, RateLimiter};
 use jiu::{
     db::{
         connect, latest_media_ids_from_provider, process_scrape, submit_webhook_responses,
         webhooks_for_provider, Database,
     },
     models::PendingProvider,
-    scheduler::{mark_as_scheduled, pending_scrapes, RunningProviders},
+    scheduler::{
+        global_rate_limiter, mark_as_scheduled, pending_scrapes, wait_provider_turn,
+        RunningProviders,
+    },
     scraper::{providers, scraper::scrape, Provider, ScrapeRequestInput},
     server::run_server,
     webhook::dispatcher::dispatch_webhooks,
 };
 use log::{debug, error, info};
-use nonzero_ext::nonzero;
 use parking_lot::RwLock;
 use reqwest::Client;
 use sqlx::{Pool, Postgres};
 use std::{collections::HashSet, error::Error, sync::Arc, time::Duration};
-
-const PROVIDER_PROCESSING_LIMIT: u32 = 8;
 
 struct Context {
     db: Arc<Pool<Postgres>>,
@@ -46,7 +45,13 @@ async fn iter(
 }
 
 async fn job_loop(arc_db: Arc<Database>, client: Arc<Client>) {
-    let mut interval = tokio::time::interval(Duration::from_secs(10));
+    let scrape_duration = if cfg!(debug_assertions) {
+        Duration::from_secs(10)
+    } else {
+        // release code should not be scraping as often as debug
+        Duration::from_secs(120)
+    };
+    let mut interval = tokio::time::interval(scrape_duration);
     let running_providers: RwLock<RunningProviders> = RwLock::new(HashSet::default());
     loop {
         interval.tick().await;
@@ -80,14 +85,10 @@ async fn run(
         db: Arc::clone(&arc_db),
     };
     let provider_map = providers(client).await?;
-    let rate_limiter = RateLimiter::direct(
-        Quota::per_minute(nonzero!(60u32)).allow_burst(nonzero!(PROVIDER_PROCESSING_LIMIT)),
-    );
+    let rate_limiter = global_rate_limiter();
     let futures = pending_providers.into_iter().map(|sp| async {
         info!("Waiting for rate limiter");
-        rate_limiter
-            .until_ready_with_jitter(Jitter::up_to(Duration::from_secs(4u64)))
-            .await;
+        wait_provider_turn(&rate_limiter).await;
         let provider = provider_map.get(&sp.provider.name).expect(&format!(
             "Tried to get a provider that doesn't exist {}",
             &sp.provider,
@@ -106,14 +107,11 @@ async fn setup() -> anyhow::Result<()> {
     let db = Arc::new(connect().await?);
     let client = Arc::new(Client::new());
     let data = tokio::task::spawn_local(job_loop(Arc::clone(&db), Arc::clone(&client)));
-    match run_server(Arc::clone(&db)).await {
-        Err(err) => {
-            eprintln!("{:?}", err);
-        }
-        Ok(()) => {}
+    if let Err(err) = run_server(Arc::clone(&db)).await {
+        error!("Error with the webserver");
+        eprintln!("{:?}", err);
     };
-    // infinite
-    data.await;
+    data.await?;
     Ok(())
 }
 
@@ -123,6 +121,8 @@ async fn main() {
     env_logger::init();
 
     info!("Running program");
-    setup().await;
-    println!("Done!");
+    if let Err(err) = setup().await {
+        error!("{:?}", err);
+    };
+    info!("Shutting down...")
 }
