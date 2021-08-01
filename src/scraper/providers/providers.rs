@@ -97,6 +97,7 @@ impl From<reqwest::Error> for ProviderFailure {
 pub struct ProviderState {
     // empty if we're done with pagination
     pub url: ScrapeUrl,
+    pub pagination: Option<Pagination>,
     pub iteration: usize,
 }
 
@@ -118,12 +119,12 @@ pub enum CredentialRefresh {
 }
 
 pub enum ProviderErrorHandle {
-    RefreshToken,
+    RefreshToken(ProviderCredentials),
     Login,
     Halt,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Pagination {
     NextPage(i32),
     NextCursor(String),
@@ -228,7 +229,10 @@ pub trait Provider: Sync + Send + RateLimitable {
         Ok(ProviderErrorHandle::Halt)
     }
 
-    async fn token_refresh(&self) -> anyhow::Result<CredentialRefresh> {
+    async fn token_refresh(
+        &self,
+        credentials: &ProviderCredentials,
+    ) -> anyhow::Result<CredentialRefresh> {
         panic!(
             "{}'s on_error branch tried to refresh credentials but it doesn't implement a token refresh flow",
             self.id().to_string()

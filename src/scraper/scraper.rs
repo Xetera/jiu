@@ -57,12 +57,12 @@ async fn request_page<'a>(
         Err(error) => match &error {
             ProviderFailure::HttpError(http_error) => match provider.on_error(http_error) {
                 Ok(ProviderErrorHandle::Halt) => (InternalScraperStep::Error(error), None),
-                Ok(ProviderErrorHandle::RefreshToken) => {
+                Ok(ProviderErrorHandle::RefreshToken(credentials)) => {
                     debug!(
                         "Triggering token refresh flow for {}",
                         provider.id().to_string()
                     );
-                    match provider.token_refresh().await {
+                    match provider.token_refresh(&credentials).await {
                         Ok(CredentialRefresh::Result(credentials)) => {
                             write_provider_credentials(provider, credentials);
                             request_page(sp, provider, state, input).await
@@ -88,13 +88,13 @@ async fn request_page<'a>(
         },
         Ok(ProviderStep::End(result)) => (InternalScraperStep::Data(result), None),
         Ok(ProviderStep::NotInitialized) => (InternalScraperStep::Exit, None),
-        Ok(ProviderStep::Next(result, response_json)) => {
+        Ok(ProviderStep::Next(result, pagination)) => {
             let page_size = provider.next_page_size(input.last_scrape, iteration);
 
             let maybe_next_url = provider.from_provider_destination(
                 sp.destination.clone(),
-                page_size.to_owned(),
-                Some(response_json),
+                page_size.clone(),
+                Some(pagination),
             );
 
             match maybe_next_url {
@@ -102,6 +102,7 @@ async fn request_page<'a>(
                 Ok(url) => {
                     let next_state = ProviderState {
                         url: url.clone(),
+                        pagination: Some(pagination),
                         iteration: iteration + 1,
                     };
                     (InternalScraperStep::Data(result), Some(next_state))
@@ -123,6 +124,7 @@ pub async fn scrape<'a>(
 
     let seed = ProviderState {
         url,
+        pagination: None,
         iteration: initial_iteration,
     };
 

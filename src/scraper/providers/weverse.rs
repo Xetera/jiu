@@ -1,8 +1,4 @@
-use super::{
-    default_jitter, default_quota, AllProviders, CredentialRefresh, PageSize, Pagination, Provider,
-    ProviderCredentials, ProviderErrorHandle, ProviderFailure, ProviderInput, ProviderState,
-    ProviderStep, RateLimitable, ScrapeUrl, SharedCredentials,
-};
+use super::*;
 use crate::{
     request::{parse_successful_response, request_default_headers, HttpError},
     scheduler::UnscopedLimiter,
@@ -387,40 +383,39 @@ impl Provider for WeverseArtistFeed {
                 // :) I don't actually know if weverse returns a 401 on expired tokens
                 // but I can't test because their tokens last for 6 ENTIRE months!!!!
                 if err.code == 401 {
-                    return Ok(ProviderErrorHandle::RefreshToken);
+                    return Ok(self
+                        .credentials
+                        .map_or(ProviderErrorHandle::Login, |creds| {
+                            ProviderErrorHandle::RefreshToken(creds.read().clone())
+                        }));
                 }
                 Ok(ProviderErrorHandle::Halt)
             }
             _ => Ok(ProviderErrorHandle::Halt),
         }
     }
-    async fn token_refresh(&self) -> anyhow::Result<CredentialRefresh> {
-        match &self.credentials {
-            // we already have a refresh token from a previous login attempt?
-            Some(credentials) => {
-                let refresh_token = credentials.read().refresh_token.clone();
-
-                let input = WeverseAuthorizeInput::TokenRefresh {
-                    grant_type: "refresh_token".to_owned(),
-                    client_id: "weverse-test".to_owned(),
-                    refresh_token: refresh_token.to_owned(),
-                };
-                let out = self
-                    .client
-                    .post("https://accountapi.weverse.io/api/v1/oauth/token")
-                    .json(&input)
-                    .send()
-                    .await?
-                    .json::<WeverseAuthorizeResponse>()
-                    .await?;
-                let credentials_result = ProviderCredentials {
-                    access_token: out.access_token,
-                    refresh_token: out.refresh_token,
-                };
-                Ok(CredentialRefresh::Result(credentials_result))
-            }
-            _ => Ok(CredentialRefresh::TryLogin),
-        }
+    async fn token_refresh(
+        &self,
+        credentials: &ProviderCredentials,
+    ) -> anyhow::Result<CredentialRefresh> {
+        let input = WeverseAuthorizeInput::TokenRefresh {
+            grant_type: "refresh_token".to_owned(),
+            client_id: "weverse-test".to_owned(),
+            refresh_token: credentials.refresh_token.clone(),
+        };
+        let out = self
+            .client
+            .post("https://accountapi.weverse.io/api/v1/oauth/token")
+            .json(&input)
+            .send()
+            .await?
+            .json::<WeverseAuthorizeResponse>()
+            .await?;
+        let credentials_result = ProviderCredentials {
+            access_token: out.access_token,
+            refresh_token: out.refresh_token,
+        };
+        Ok(CredentialRefresh::Result(credentials_result))
     }
     async fn login(&self) -> anyhow::Result<ProviderCredentials> {
         let credentials = fetch_weverse_auth_token(&self.client)

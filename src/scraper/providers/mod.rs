@@ -1,17 +1,18 @@
 pub mod pinterest;
-mod providers;
-pub mod united_cube;
-pub mod weverse;
-use parking_lot::RwLock;
 pub use pinterest::*;
+mod providers;
 pub use providers::*;
+pub mod weverse;
+pub use weverse::*;
+pub mod united_cube;
+use parking_lot::RwLock;
 use reqwest::Client;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::iter::FromIterator;
 use std::sync::Arc;
 use strum::IntoEnumIterator;
-pub use weverse::*;
+pub use united_cube::*;
 
 /// A scrape url is only transparently available to providers
 #[derive(Debug, Clone)]
@@ -54,6 +55,7 @@ pub async fn providers(
             let provider: Box<dyn Provider> = match &provider_type {
                 AllProviders::PinterestBoardFeed => Box::new(PinterestBoardFeed::new(input)),
                 AllProviders::WeverseArtistFeed => Box::new(WeverseArtistFeed::new(input)),
+                AllProviders::UnitedCubeArtistFeed => Box::new(UnitedCubeArtistFeed::new(input)),
             };
             (provider_type, provider)
         },
