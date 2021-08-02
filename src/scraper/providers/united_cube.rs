@@ -10,7 +10,7 @@ use log::error;
 use parking_lot::RwLock;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::{env, sync::Arc};
+use std::{env, path::Path, sync::Arc, time::Instant};
 
 pub struct UnitedCubeArtistFeed {
     pub client: Arc<Client>,
@@ -95,10 +95,18 @@ struct Page {
     items: Vec<Post>,
 }
 
-const BASE_MEDIA_URL: &'static str = "https://www.united-cube.com";
+const BASE_URL: &'static str = "https://www.united-cube.com";
 
 fn to_absolute(path: &str) -> String {
-    format!("{}/{}", BASE_MEDIA_URL, path)
+    format!("{}/{}", BASE_URL, path)
+}
+
+fn from_media_code(code: &str) -> Option<ProviderMediaType> {
+    match code {
+        "601" => Some(ProviderMediaType::Image),
+        "602" => Some(ProviderMediaType::Video),
+        _ => None,
+    }
 }
 
 // impl Into
@@ -125,8 +133,8 @@ impl Provider for UnitedCubeArtistFeed {
 
     fn on_error(&self, http_error: &HttpError) -> anyhow::Result<ProviderErrorHandle> {
         let err = match http_error {
-            &HttpError::ReqwestError(_err) => return Ok(ProviderErrorHandle::Halt),
-            &HttpError::FailStatus(err) | &HttpError::UnexpectedBody(err) => err,
+            HttpError::ReqwestError(_err) => return Ok(ProviderErrorHandle::Halt),
+            HttpError::FailStatus(err) | HttpError::UnexpectedBody(err) => err,
         };
         let body = match serde_json::from_str::<GenericError>(&err.body) {
             Err(err) => {
@@ -137,9 +145,11 @@ impl Provider for UnitedCubeArtistFeed {
             Ok(body) => body,
         };
         Ok(if body.message == "Token Expired" && err.code == 400 {
-            self.credentials.map_or(ProviderErrorHandle::Login, |cred| {
-                ProviderErrorHandle::RefreshToken(cred.read().clone())
-            })
+            self.credentials
+                .clone()
+                .map_or(ProviderErrorHandle::Login, |cred| {
+                    ProviderErrorHandle::RefreshToken(cred.read().clone())
+                })
         } else {
             // I don't think there is any other response you can get if your token is expired
             // so we can probably assume that something else has gone wrong
@@ -147,16 +157,31 @@ impl Provider for UnitedCubeArtistFeed {
         })
     }
 
+    fn from_provider_destination(
+        &self,
+        id: &str,
+        page_size: PageSize,
+        pagination: Option<Pagination>,
+    ) -> Result<ScrapeUrl, ProviderFailure> {
+        // club_id|board_id
+        let parts = id.split("|").collect::<Vec<&str>>();
+        let board = parts.get(1).unwrap();
+        let next_url = UrlBuilder::queries(vec![("board", board.to_owned().to_owned())])
+            .page_size("per_page", page_size)
+            .pagination("page", &pagination)
+            .build("https://united-cube.com/v1/posts")?;
+        Ok(ScrapeUrl(next_url.as_str().to_owned()))
+    }
+
     async fn unfold(&self, state: ProviderState) -> Result<ProviderStep, ProviderFailure> {
-        let credentials = match self.credentials {
+        let credentials = match &self.credentials {
             Some(c) => c,
             None => return Ok(ProviderStep::NotInitialized),
         };
-        // if self.credentials.is_none() {
-        //     return Ok(ProviderStep::NotInitialized);
-        // }
-        // let credentials = self.credentials.unwrap().read();
-        let token = credentials.read().access_token;
+
+        let token = credentials.read().access_token.clone();
+        let instant = Instant::now();
+
         let response = self
             .client
             .get(&state.url.0)
@@ -164,17 +189,62 @@ impl Provider for UnitedCubeArtistFeed {
             .header("Authorization", &format!("Bearer {}", token))
             .send()
             .await?;
-        // .json::<Page>()
-        // .await;
+        let elapsed = instant.elapsed();
+        let status = response.status();
+
+        let cube_url = url::Url::parse(BASE_URL).unwrap();
         let response_json = parse_successful_response::<Page>(response).await?;
-        let a = response_json.items.iter().map(|post| {
-            post.media.into_iter().flat_map(|media| ProviderMedia {
-                _type: ProviderMediaType::Image,
-                media_url: to_absolute(&media.data.path),
-                page_url: 
+
+        let media = response_json
+            .items
+            .into_iter()
+            .flat_map(|post| {
+                post.media
+                    .iter()
+                    .map(|media| {
+                        // ucube is missing a leading slash in their links lol
+                        let parsed_relative_url = format!("/{}", media.data.path);
+                        let url = cube_url.clone().join(&parsed_relative_url).unwrap();
+                        // unbelievably big brain conversion
+                        let unique_identifier = Path::new(&parsed_relative_url)
+                            .file_stem()
+                            .unwrap()
+                            .to_str()
+                            .unwrap()
+                            .to_owned();
+                        ProviderMedia {
+                            _type: from_media_code(&media.type_code)
+                                .expect(&format!("Invalid media code {}", &media.type_code)),
+                            media_url: url.as_str().to_owned(),
+                            // TODO: maybe add page urls to this anyways?
+                            // united-cube doesn't have page-specific links, they all go to
+                            // https://www.united-cube.com/club/qXmD_5exRnmZfkFIwR1cVA/board/cHTUTBaRRpqUWAL2c5nQiw#PostDetail
+                            // which is controlled by JS and can't be linked to
+                            page_url: None,
+                            // same with reference URL
+                            reference_url: None,
+                            post_date: Some(post.register_datetime.clone()),
+                            provider_metadata: None,
+                            unique_identifier,
+                        }
+                    })
+                    .collect::<Vec<ProviderMedia>>()
             })
-        });
-        Err(ProviderFailure::Url)
+            .collect::<Vec<ProviderMedia>>();
+
+        let result = ProviderResult {
+            images: media,
+            response_code: status,
+            response_delay: elapsed,
+        };
+        if response_json.has_next {
+            Ok(ProviderStep::Next(
+                result,
+                Pagination::NextPage(response_json.page + 1),
+            ))
+        } else {
+            Ok(ProviderStep::End(result))
+        }
     }
 
     fn credentials(&self) -> Arc<RwLock<ProviderCredentials>> {
@@ -206,7 +276,7 @@ impl Provider for UnitedCubeArtistFeed {
         &self,
         credentials: &ProviderCredentials,
     ) -> anyhow::Result<CredentialRefresh> {
-        let refresh_token = credentials.refresh_token;
+        let refresh_token = credentials.refresh_token.clone();
         let response = self
             .client
             .post("https://united-cube.com/v1/auth/refresh")

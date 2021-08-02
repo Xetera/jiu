@@ -91,18 +91,20 @@ async fn request_page<'a>(
         Ok(ProviderStep::Next(result, pagination)) => {
             let page_size = provider.next_page_size(input.last_scrape, iteration);
 
+            let id = sp.destination.clone();
             let maybe_next_url = provider.from_provider_destination(
-                sp.destination.clone(),
+                &id,
                 page_size.clone(),
-                Some(pagination),
+                Some(pagination.clone()),
             );
 
             match maybe_next_url {
                 Err(err) => (InternalScraperStep::Error(err), None),
                 Ok(url) => {
                     let next_state = ProviderState {
+                        id,
                         url: url.clone(),
-                        pagination: Some(pagination),
+                        pagination: Some(pagination.clone()),
                         iteration: iteration + 1,
                     };
                     (InternalScraperStep::Data(result), Some(next_state))
@@ -119,10 +121,11 @@ pub async fn scrape<'a>(
 ) -> Result<Scrape<'a>, ProviderFailure> {
     let initial_iteration = 0;
     let page_size = provider.next_page_size(input.last_scrape, initial_iteration);
-    let url =
-        provider.from_provider_destination(sp.destination.clone(), page_size.to_owned(), None)?;
+    let id = sp.destination.clone();
+    let url = provider.from_provider_destination(&id, page_size.to_owned(), None)?;
 
     let seed = ProviderState {
+        id: id.clone(),
         url,
         pagination: None,
         iteration: initial_iteration,

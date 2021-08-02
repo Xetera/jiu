@@ -106,7 +106,7 @@ impl Provider for PinterestBoardFeed {
 
     fn from_provider_destination(
         &self,
-        scrape_id: String,
+        scrape_id: &str,
         page_size: PageSize,
         pagination: Option<Pagination>,
     ) -> Result<ScrapeUrl, ProviderFailure> {

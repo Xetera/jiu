@@ -276,23 +276,17 @@ impl Provider for WeverseArtistFeed {
 
     fn from_provider_destination(
         &self,
-        id: String,
+        id: &str,
         page_size: PageSize,
         pagination: Option<Pagination>,
     ) -> Result<ScrapeUrl, ProviderFailure> {
-        let mut params = vec![("pageSize", page_size.0.to_string())];
-        if let Some(page) = pagination {
-            params.push(("from", page.next_page()));
-        }
-        let next_url = url::Url::parse_with_params(
-            &format!(
+        let next_url = UrlBuilder::default()
+            .page_size("pageSize", page_size)
+            .pagination("from", &pagination)
+            .build(&format!(
                 "https://weversewebapi.weverse.io/wapi/v1/communities/{}/posts/artistTab",
                 id
-            ),
-            params.iter(),
-        )
-        .ok()
-        .ok_or(ProviderFailure::Url)?;
+            ))?;
         Ok(ScrapeUrl(next_url.as_str().to_owned()))
     }
 
@@ -385,6 +379,7 @@ impl Provider for WeverseArtistFeed {
                 if err.code == 401 {
                     return Ok(self
                         .credentials
+                        .clone()
                         .map_or(ProviderErrorHandle::Login, |creds| {
                             ProviderErrorHandle::RefreshToken(creds.read().clone())
                         }));
