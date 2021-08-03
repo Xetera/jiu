@@ -22,6 +22,8 @@ pub enum ProviderMediaType {
     Video,
 }
 
+pub type SharedCredentials = Arc<RwLock<ProviderCredentials>>;
+
 /// Placeholder for images that may contain more metadata in the future?
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderMedia {
@@ -93,8 +95,9 @@ impl From<reqwest::Error> for ProviderFailure {
 
 #[derive(Debug, Clone)]
 pub struct ProviderState {
-    // empty if we're done with pagination
+    pub id: String,
     pub url: ScrapeUrl,
+    pub pagination: Option<Pagination>,
     pub iteration: usize,
 }
 
@@ -116,22 +119,22 @@ pub enum CredentialRefresh {
 }
 
 pub enum ProviderErrorHandle {
-    RefreshToken,
+    RefreshToken(ProviderCredentials),
     Login,
     Halt,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Pagination {
     NextPage(i32),
     NextCursor(String),
 }
 
 impl Pagination {
-    pub fn next_page(self) -> String {
+    pub fn next_page(&self) -> String {
         match self {
             Pagination::NextPage(num) => num.to_string(),
-            Pagination::NextCursor(cursor) => cursor,
+            Pagination::NextCursor(cursor) => cursor.clone(),
         }
     }
 }
@@ -209,7 +212,7 @@ pub trait Provider: Sync + Send + RateLimitable {
     /// This method is called after every successful scrape to resolve the next page of media
     fn from_provider_destination(
         &self,
-        id: String,
+        id: &str,
         page_size: PageSize,
         pagination: Option<Pagination>,
     ) -> Result<ScrapeUrl, ProviderFailure>;
@@ -226,7 +229,10 @@ pub trait Provider: Sync + Send + RateLimitable {
         Ok(ProviderErrorHandle::Halt)
     }
 
-    async fn token_refresh(&self) -> anyhow::Result<CredentialRefresh> {
+    async fn token_refresh(
+        &self,
+        _credentials: &ProviderCredentials,
+    ) -> anyhow::Result<CredentialRefresh> {
         panic!(
             "{}'s on_error branch tried to refresh credentials but it doesn't implement a token refresh flow",
             self.id().to_string()
@@ -255,4 +261,37 @@ pub enum AllProviders {
     PinterestBoardFeed,
     #[strum(serialize = "weverse.artist_feed")]
     WeverseArtistFeed,
+    #[strum(serialize = "united_cube.artist_feed")]
+    UnitedCubeArtistFeed,
+}
+
+pub struct UrlBuilder {
+    params: Vec<(&'static str, String)>,
+}
+
+impl Default for UrlBuilder {
+    fn default() -> Self {
+        Self { params: vec![] }
+    }
+}
+
+impl UrlBuilder {
+    pub fn queries(params: Vec<(&'static str, String)>) -> Self {
+        Self { params }
+    }
+    pub fn page_size(&mut self, key: &'static str, page_size: PageSize) -> &mut Self {
+        self.params.push((key, page_size.0.to_string()));
+        self
+    }
+    pub fn pagination(&mut self, key: &'static str, page_option: &Option<Pagination>) -> &mut Self {
+        if let Some(page) = page_option {
+            self.params.push((key, page.next_page()))
+        }
+        self
+    }
+    pub fn build(&self, base_url: &str) -> Result<url::Url, ProviderFailure> {
+        Ok(url::Url::parse_with_params(base_url, self.params.iter())
+            .ok()
+            .ok_or(ProviderFailure::Url)?)
+    }
 }

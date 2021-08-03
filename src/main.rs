@@ -1,16 +1,10 @@
 use actix_web;
 use futures::future::join_all;
 use jiu::{
-    db::{
-        connect, latest_media_ids_from_provider, process_scrape, submit_webhook_responses,
-        webhooks_for_provider, Database,
-    },
+    db::*,
     models::PendingProvider,
-    scheduler::{
-        global_rate_limiter, mark_as_scheduled, pending_scrapes, wait_provider_turn,
-        RunningProviders,
-    },
-    scraper::{providers, scraper::scrape, Provider, ScrapeRequestInput},
+    scheduler::*,
+    scraper::{get_provider_map, scraper::scrape, Provider, ProviderMap, ScrapeRequestInput},
     server::run_server,
     webhook::dispatcher::dispatch_webhooks,
 };
@@ -52,16 +46,20 @@ async fn job_loop(arc_db: Arc<Database>, client: Arc<Client>) {
         Duration::from_secs(120)
     };
     let mut interval = tokio::time::interval(scrape_duration);
+    let provider_map = get_provider_map(Arc::clone(&client))
+        .await
+        .expect("Could not successfully initialize a provider map");
     let running_providers: RwLock<RunningProviders> = RwLock::new(HashSet::default());
     loop {
         interval.tick().await;
         match pending_scrapes(&arc_db, &running_providers).await {
             Ok(pending) => {
-                if let Err(err) = mark_as_scheduled(&arc_db, &pending, &running_providers).await {
+                let scheduled = filter_scheduled(pending);
+                if let Err(err) = mark_as_scheduled(&arc_db, &scheduled, &running_providers).await {
                     error!("{:?}", err);
                     continue;
                 };
-                if let Err(err) = run(Arc::clone(&arc_db), Arc::clone(&client), pending).await {
+                if let Err(err) = run(Arc::clone(&arc_db), scheduled, &provider_map).await {
                     error!("{:?}", err);
                     continue;
                 }
@@ -74,19 +72,19 @@ async fn job_loop(arc_db: Arc<Database>, client: Arc<Client>) {
 
 async fn run(
     arc_db: Arc<Database>,
-    client: Arc<Client>,
-    pending_providers: Vec<PendingProvider>,
+    pending_providers: ScheduledProviders,
+    provider_map: &ProviderMap,
 ) -> Result<(), Box<dyn Error + Send>> {
+    let providers = pending_providers.providers();
     // let latest = latest_requests(&*arc_db, true).await?;
     // let pending_providers = pending_scrapes(&*arc_db).await?;
-    debug!("Pending providers = {:?}", pending_providers);
+    debug!("Pending providers = {:?}", providers);
 
     let ctx = Context {
         db: Arc::clone(&arc_db),
     };
-    let provider_map = providers(client).await?;
     let rate_limiter = global_rate_limiter();
-    let futures = pending_providers.into_iter().map(|sp| async {
+    let futures = providers.into_iter().map(|sp| async {
         info!("Waiting for rate limiter");
         wait_provider_turn(&rate_limiter).await;
         let provider = provider_map.get(&sp.provider.name).expect(&format!(

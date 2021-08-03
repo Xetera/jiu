@@ -47,6 +47,7 @@ pub struct ScrapeHistory {
 
 pub struct PendingProvider {
     pub id: i32,
+    pub priority: Priority,
     pub provider: ScopedProvider,
     pub last_scrape: Option<NaiveDateTime>,
 }

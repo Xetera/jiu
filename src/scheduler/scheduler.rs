@@ -4,11 +4,21 @@ use crate::{
     scheduler::Priority,
     scraper::{AllProviders, ScopedProvider},
 };
+use chrono::{DateTime, Duration, Utc};
 use itertools::Itertools;
 use parking_lot::RwLock;
 use std::{collections::HashSet, convert::TryInto, str::FromStr};
 
 pub type RunningProviders = HashSet<ScopedProvider>;
+
+/// Scheduled providers are ready to be processed
+pub struct ScheduledProviders(Vec<PendingProvider>);
+
+impl ScheduledProviders {
+    pub fn providers(self) -> Vec<PendingProvider> {
+        self.0
+    }
+}
 
 pub async fn pending_scrapes(
     db: &Database,
@@ -36,6 +46,7 @@ pub async fn pending_scrapes(
         .into_iter()
         .map(|row| PendingProvider {
             id: row.id,
+            priority: Priority::unchecked_clamp(row.priority),
             provider: ScopedProvider {
                 destination: row.destination,
                 name: AllProviders::from_str(&row.name).unwrap(),
@@ -48,17 +59,21 @@ pub async fn pending_scrapes(
 
 pub async fn mark_as_scheduled(
     db: &Database,
-    pending_providers: &[PendingProvider],
+    pending_providers: &ScheduledProviders,
     running_providers: &RwLock<RunningProviders>,
 ) -> anyhow::Result<()> {
     sqlx::query!(
         "UPDATE provider_resource SET last_queue = NOW() WHERE id = ANY($1)",
-        &pending_providers.iter().map(|pv| pv.id).collect::<Vec<_>>(),
+        &pending_providers
+            .0
+            .iter()
+            .map(|pv| pv.id)
+            .collect::<Vec<_>>(),
     )
     .fetch_optional(db)
     .await?;
     let mut handle = running_providers.write();
-    handle.extend(pending_providers.iter().map(|pp| pp.provider.clone()));
+    handle.extend(pending_providers.0.iter().map(|pp| pp.provider.clone()));
     Ok(())
 }
 
@@ -131,4 +146,22 @@ pub async fn update_priorities(
         }
     }
     Ok(())
+}
+
+// TODO: this should return an opaque type that indicates the provider is ready to be processed
+pub fn filter_scheduled(pending: Vec<PendingProvider>) -> ScheduledProviders {
+    ScheduledProviders(
+        pending
+            .into_iter()
+            .filter(|pen| {
+                // should always be scraping things that haven't been scraped before
+                pen.last_scrape.map_or(true, |last| {
+                    let current_time = Utc::now();
+                    let scheduled_scrape: DateTime<Utc> = DateTime::from_utc(last, Utc)
+                        + Duration::from_std(pen.priority.added_duration()).unwrap();
+                    scheduled_scrape >= current_time
+                })
+            })
+            .collect::<Vec<PendingProvider>>(),
+    )
 }

@@ -1,7 +1,4 @@
-use super::{
-    default_jitter, AllProviders, PageSize, Pagination, Provider, ProviderFailure, ProviderInput,
-    ProviderMedia, ProviderResult, ProviderState, ProviderStep, RateLimitable, ScrapeUrl,
-};
+use super::*;
 use crate::{
     request::{parse_successful_response, request_default_headers},
     scheduler::UnscopedLimiter,
@@ -109,7 +106,7 @@ impl Provider for PinterestBoardFeed {
 
     fn from_provider_destination(
         &self,
-        scrape_id: String,
+        scrape_id: &str,
         page_size: PageSize,
         pagination: Option<Pagination>,
     ) -> Result<ScrapeUrl, ProviderFailure> {

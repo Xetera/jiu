@@ -57,12 +57,12 @@ async fn request_page<'a>(
         Err(error) => match &error {
             ProviderFailure::HttpError(http_error) => match provider.on_error(http_error) {
                 Ok(ProviderErrorHandle::Halt) => (InternalScraperStep::Error(error), None),
-                Ok(ProviderErrorHandle::RefreshToken) => {
+                Ok(ProviderErrorHandle::RefreshToken(credentials)) => {
                     debug!(
                         "Triggering token refresh flow for {}",
                         provider.id().to_string()
                     );
-                    match provider.token_refresh().await {
+                    match provider.token_refresh(&credentials).await {
                         Ok(CredentialRefresh::Result(credentials)) => {
                             write_provider_credentials(provider, credentials);
                             request_page(sp, provider, state, input).await
@@ -88,20 +88,23 @@ async fn request_page<'a>(
         },
         Ok(ProviderStep::End(result)) => (InternalScraperStep::Data(result), None),
         Ok(ProviderStep::NotInitialized) => (InternalScraperStep::Exit, None),
-        Ok(ProviderStep::Next(result, response_json)) => {
+        Ok(ProviderStep::Next(result, pagination)) => {
             let page_size = provider.next_page_size(input.last_scrape, iteration);
 
+            let id = sp.destination.clone();
             let maybe_next_url = provider.from_provider_destination(
-                sp.destination.clone(),
-                page_size.to_owned(),
-                Some(response_json),
+                &id,
+                page_size.clone(),
+                Some(pagination.clone()),
             );
 
             match maybe_next_url {
                 Err(err) => (InternalScraperStep::Error(err), None),
                 Ok(url) => {
                     let next_state = ProviderState {
+                        id,
                         url: url.clone(),
+                        pagination: Some(pagination.clone()),
                         iteration: iteration + 1,
                     };
                     (InternalScraperStep::Data(result), Some(next_state))
@@ -118,11 +121,13 @@ pub async fn scrape<'a>(
 ) -> Result<Scrape<'a>, ProviderFailure> {
     let initial_iteration = 0;
     let page_size = provider.next_page_size(input.last_scrape, initial_iteration);
-    let url =
-        provider.from_provider_destination(sp.destination.clone(), page_size.to_owned(), None)?;
+    let id = sp.destination.clone();
+    let url = provider.from_provider_destination(&id, page_size.to_owned(), None)?;
 
     let seed = ProviderState {
+        id: id.clone(),
         url,
+        pagination: None,
         iteration: initial_iteration,
     };
 
