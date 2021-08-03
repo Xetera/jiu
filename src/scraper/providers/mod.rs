@@ -36,9 +36,9 @@ impl Display for ScopedProvider {
     }
 }
 
-pub async fn providers(
-    client: Arc<Client>,
-) -> anyhow::Result<HashMap<AllProviders, Box<dyn Provider>>> {
+pub type ProviderMap = HashMap<AllProviders, Box<dyn Provider>>;
+
+pub async fn get_provider_map(client: Arc<Client>) -> anyhow::Result<ProviderMap> {
     let credentials = fetch_weverse_auth_token(&client).await?;
     Ok(HashMap::from_iter(AllProviders::iter().map(
         |provider_type| {

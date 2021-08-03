@@ -231,7 +231,7 @@ pub trait Provider: Sync + Send + RateLimitable {
 
     async fn token_refresh(
         &self,
-        credentials: &ProviderCredentials,
+        _credentials: &ProviderCredentials,
     ) -> anyhow::Result<CredentialRefresh> {
         panic!(
             "{}'s on_error branch tried to refresh credentials but it doesn't implement a token refresh flow",

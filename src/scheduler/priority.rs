@@ -69,6 +69,9 @@ enum PriorityChange {
 }
 
 impl Priority {
+    pub fn added_duration(&self) -> Duration {
+        self.duration
+    }
     fn change(&self, history: &[ScrapeHistory]) -> Option<PriorityChange> {
         let same_priority_scrapes = history
             .iter()
@@ -114,7 +117,5 @@ impl Priority {
         }
     }
 }
-
-// pub f
 
 pub fn update_priority() {}

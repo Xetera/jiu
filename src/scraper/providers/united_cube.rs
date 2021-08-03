@@ -20,7 +20,7 @@ pub struct UnitedCubeArtistFeed {
 
 #[async_trait]
 impl RateLimitable for UnitedCubeArtistFeed {
-    async fn wait(&self, key: &str) -> () {
+    async fn wait(&self, _key: &str) -> () {
         self.rate_limiter
             .until_ready_with_jitter(default_jitter())
             .await
@@ -53,11 +53,11 @@ struct RefreshResponse {
 
 #[derive(Deserialize)]
 struct LoginResponse {
-    slug: String,
-    email: String,
-    name: String,
-    language: String,
-    role_code: String,
+    // slug: String,
+    // email: String,
+    // name: String,
+    // language: String,
+    // role_code: String,
     token: String,
     refresh_token: String,
 }
@@ -65,7 +65,7 @@ struct LoginResponse {
 #[derive(Deserialize)]
 struct PostData {
     path: String,
-    status: Option<String>,
+    // status: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -76,8 +76,8 @@ struct PostMedia {
 
 #[derive(Deserialize)]
 struct Post {
-    slug: String,
-    content: String,
+    // slug: String,
+    // content: String,
     register_datetime: NaiveDateTime,
     media: Vec<PostMedia>,
 }
@@ -85,21 +85,17 @@ struct Post {
 #[derive(Deserialize)]
 struct Page {
     has_next: bool,
-    has_prev: bool,
+    // has_prev: bool,
     // next_num: null,
     // prev_num: null,
     page: i32,
-    pages: i32,
-    per_page: i32,
-    total: i32,
+    // pages: i32,
+    // per_page: i32,
+    // total: i32,
     items: Vec<Post>,
 }
 
 const BASE_URL: &'static str = "https://www.united-cube.com";
-
-fn to_absolute(path: &str) -> String {
-    format!("{}/{}", BASE_URL, path)
-}
 
 fn from_media_code(code: &str) -> Option<ProviderMediaType> {
     match code {
