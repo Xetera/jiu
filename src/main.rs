@@ -46,7 +46,7 @@ async fn job_loop(arc_db: Arc<Database>, client: Arc<Client>) {
         Duration::from_secs(120)
     };
     let mut interval = tokio::time::interval(scrape_duration);
-    let provider_map = get_provider_map(Arc::clone(&client))
+    let provider_map = get_provider_map(&Arc::clone(&client))
         .await
         .expect("Could not successfully initialize a provider map");
     let running_providers: RwLock<RunningProviders> = RwLock::new(HashSet::default());
@@ -54,7 +54,13 @@ async fn job_loop(arc_db: Arc<Database>, client: Arc<Client>) {
         interval.tick().await;
         match pending_scrapes(&arc_db, &running_providers).await {
             Ok(pending) => {
+                debug!("pending = {:?}", pending);
                 let scheduled = filter_scheduled(pending);
+                debug!("scheduled = {:?}", scheduled);
+                if scheduled.len() == 0 {
+                    debug!("No providers waiting to be staged");
+                    continue;
+                }
                 if let Err(err) = mark_as_scheduled(&arc_db, &scheduled, &running_providers).await {
                     error!("{:?}", err);
                     continue;
@@ -105,10 +111,10 @@ async fn setup() -> anyhow::Result<()> {
     let db = Arc::new(connect().await?);
     let client = Arc::new(Client::new());
     let data = tokio::task::spawn_local(job_loop(Arc::clone(&db), Arc::clone(&client)));
-    if let Err(err) = run_server(Arc::clone(&db)).await {
-        error!("Error with the webserver");
-        eprintln!("{:?}", err);
-    };
+    // if let Err(err) = run_server(Arc::clone(&db)).await {
+    //     error!("Error with the webserver");
+    //     eprintln!("{:?}", err);
+    // };
     data.await?;
     Ok(())
 }

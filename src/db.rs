@@ -233,9 +233,8 @@ pub async fn latest_requests(
     db: &Database,
     _only_with_media: bool,
 ) -> anyhow::Result<Vec<ScrapeRequestWithMedia>> {
-    let results = dbg!(
-        sqlx::query!(
-            "select
+    let results = sqlx::query!(
+        "select
                 sr.id as scrape_request_id,
                 s.id as scrape_id,
                 pr.name,
@@ -250,10 +249,9 @@ pub async fn latest_requests(
                 on pr.name = s.provider_name and pr.destination = s.provider_destination
             ORDER BY sr.scraped_at desc
             LIMIT 50",
-        )
-        .fetch_all(db)
-        .await?
-    );
+    )
+    .fetch_all(db)
+    .await?;
     let scrape_ids = results
         .iter()
         .unique_by(|rec| rec.scrape_id)

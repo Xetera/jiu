@@ -4,7 +4,7 @@ use crate::scheduler::UnscopedLimiter;
 use async_trait::async_trait;
 use chrono::NaiveDateTime;
 use governor::{Jitter, Quota, RateLimiter};
-use log::{debug, error};
+use log::{debug, error, info};
 use nonzero_ext::nonzero;
 use parking_lot::RwLock;
 use reqwest::{Client, StatusCode};
@@ -22,7 +22,7 @@ pub enum ProviderMediaType {
     Video,
 }
 
-pub type SharedCredentials = Arc<RwLock<ProviderCredentials>>;
+pub type SharedCredentials = Arc<RwLock<Option<ProviderCredentials>>>;
 
 /// Placeholder for images that may contain more metadata in the future?
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -178,9 +178,36 @@ pub struct ProviderCredentials {
     pub refresh_token: String,
 }
 
+pub struct BareProviderInput {
+    pub client: Arc<Client>,
+}
+
 pub struct ProviderInput {
     pub client: Arc<Client>,
-    pub credentials: Option<Arc<RwLock<ProviderCredentials>>>,
+}
+
+pub fn create_credentials() -> SharedCredentials {
+    Arc::new(RwLock::new(None))
+}
+
+/// Try to override the shared credentials after logging in one time
+pub async fn attempt_first_login(provider: &dyn Provider, credentials: &SharedCredentials) -> () {
+    let id = provider.id().to_string();
+    info!("Attempting login to {}", &id);
+    let login = provider.login().await;
+    let provider_creds = match login {
+        Ok(login) => {
+            info!("Logged in into {}", &id);
+            login
+        }
+        Err(err) => {
+            error!("Could not log into {}, leaving it uninitialized", &id);
+            eprintln!("{:?}", err);
+            return;
+        }
+    };
+    let mut writable = credentials.write();
+    *writable = Some(provider_creds);
 }
 
 /// Providers represent a generic endpoint on a single platform that can be scraped
@@ -190,6 +217,12 @@ pub trait Provider: Sync + Send + RateLimitable {
     fn new(input: ProviderInput) -> Self
     where
         Self: Sized;
+    async fn initialize(&self) -> () {
+        ()
+    }
+    fn requires_auth(&self) -> bool {
+        false
+    }
     /// a string that uniquely identifies this provider
     fn id(&self) -> AllProviders;
     /// The page size that should be used when scraping
@@ -245,7 +278,7 @@ pub trait Provider: Sync + Send + RateLimitable {
             self.id().to_string()
         )
     }
-    fn credentials(&self) -> Arc<RwLock<ProviderCredentials>> {
+    fn credentials(&self) -> SharedCredentials {
         panic!(
             "Tried to get credentials for {} which doesn't authorization",
             self.id().to_string()

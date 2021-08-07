@@ -10,7 +10,6 @@ use chrono::NaiveDateTime;
 use governor::Quota;
 use lazy_static::lazy_static;
 use log::info;
-use parking_lot::RwLock;
 use rand::rngs::OsRng;
 use regex::Regex;
 use reqwest::Client;
@@ -100,6 +99,7 @@ async fn get_access_token(
         .json::<WeverseAuthorizeResponse>()
         .await?)
 }
+
 pub async fn fetch_weverse_auth_token(
     client: &Client,
 ) -> anyhow::Result<Option<ProviderCredentials>> {
@@ -131,6 +131,7 @@ pub async fn fetch_weverse_auth_token(
         }
     }
 }
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WeversePhoto {
@@ -184,6 +185,7 @@ enum WeverseAuthorizeInput {
         password: String,
     },
 }
+
 #[derive(Debug, Deserialize)]
 struct WeverseAuthorizeResponse {
     access_token: String,
@@ -206,7 +208,7 @@ pub struct WeversePage {
 // #[derive(Clone)]
 pub struct WeverseArtistFeed {
     pub client: Arc<Client>,
-    pub credentials: Option<SharedCredentials>,
+    pub credentials: SharedCredentials,
     pub rate_limiter: UnscopedLimiter,
 }
 
@@ -252,13 +254,21 @@ impl Provider for WeverseArtistFeed {
         Self: Sized,
     {
         Self {
-            credentials: input.credentials,
+            credentials: create_credentials(),
             client: Arc::clone(&input.client),
             rate_limiter: Self::rate_limiter(),
         }
     }
     fn id(&self) -> AllProviders {
         AllProviders::WeverseArtistFeed
+    }
+
+    fn requires_auth(&self) -> bool {
+        true
+    }
+
+    async fn initialize(&self) -> () {
+        attempt_first_login(self, &self.credentials).await;
     }
 
     fn next_page_size(&self, last_scrape: Option<NaiveDateTime>, iteration: usize) -> PageSize {
@@ -295,80 +305,76 @@ impl Provider for WeverseArtistFeed {
     }
 
     async fn unfold(&self, state: ProviderState) -> Result<ProviderStep, ProviderFailure> {
-        match &self.credentials {
-            Some(credentials) => {
-                let token = credentials.read().refresh_token.clone();
-                let instant = Instant::now();
-                let response = self
-                    .client
-                    .get(&state.url.0)
-                    .headers(request_default_headers())
-                    .header("Authorization", format!("Bearer {}", token))
-                    .send()
-                    .await?;
+        let credentials = self.credentials.read().clone();
+        // let token = "".to_owned();
+        let token = match credentials {
+            Some(token) => token.access_token,
+            None => return Ok(ProviderStep::NotInitialized),
+        };
+        // .refresh_token
+        // .clone();
+        let instant = Instant::now();
+        let response = self
+            .client
+            .get(&state.url.0)
+            .headers(request_default_headers())
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .await?;
 
-                let response_code = response.status();
-                let response_json = parse_successful_response::<WeversePage>(response).await?;
-                let response_delay = instant.elapsed();
-                let images = response_json
-                    .posts
+        let response_code = response.status();
+        let response_json = parse_successful_response::<WeversePage>(response).await?;
+        let response_delay = instant.elapsed();
+        let images = response_json
+            .posts
+            .into_iter()
+            .flat_map(|post| {
+                let community_id = post.community_user.community_id.to_owned();
+                let post_id = post.id;
+                let user = post.community_user;
+                let author_name = user.profile_nickname;
+                let author_id = user.artist_id;
+                let post_created_at = post.created_at;
+                let photos = post.photos.unwrap_or(vec![]);
+                photos
                     .into_iter()
-                    .flat_map(|post| {
-                        let community_id = post.community_user.community_id.to_owned();
-                        let post_id = post.id;
-                        let user = post.community_user;
-                        let author_name = user.profile_nickname;
-                        let author_id = user.artist_id;
-                        let post_created_at = post.created_at;
-                        let photos = post.photos.unwrap_or(vec![]);
-                        photos
-                            .into_iter()
-                            .map(|photo| {
-                                let page_url = url_from_post(community_id, post_id, photo.id);
-                                ProviderMedia {
-                                    // should be unique across all of weverse
-                                    _type: ProviderMediaType::Image,
-                                    unique_identifier: photo.id.to_string(),
-                                    post_date: Some(post_created_at),
-                                    media_url: photo.org_img_url.clone(),
-                                    page_url: Some(page_url.clone()),
-                                    reference_url: Some(page_url.clone()),
-                                    provider_metadata: serde_json::to_value(WeverseMetadata {
-                                        author_id,
-                                        author_name: author_name.clone(),
-                                        height: photo.org_img_height,
-                                        width: photo.org_img_width,
-                                        thumbnail_url: photo.thumbnail_img_url.clone(),
-                                    })
-                                    .ok(),
-                                }
+                    .map(|photo| {
+                        let page_url = url_from_post(community_id, post_id, photo.id);
+                        ProviderMedia {
+                            // should be unique across all of weverse
+                            _type: ProviderMediaType::Image,
+                            unique_identifier: photo.id.to_string(),
+                            post_date: Some(post_created_at),
+                            media_url: photo.org_img_url.clone(),
+                            page_url: Some(page_url.clone()),
+                            reference_url: Some(page_url.clone()),
+                            provider_metadata: serde_json::to_value(WeverseMetadata {
+                                author_id,
+                                author_name: author_name.clone(),
+                                height: photo.org_img_height,
+                                width: photo.org_img_width,
+                                thumbnail_url: photo.thumbnail_img_url.clone(),
                             })
-                            // not sure why I have to do this here
-                            .collect::<Vec<ProviderMedia>>()
+                            .ok(),
+                        }
                     })
-                    .collect::<Vec<ProviderMedia>>();
-                let has_more = !response_json.is_ended;
-                let result = ProviderResult {
-                    images,
-                    response_code,
-                    response_delay,
-                };
-                if has_more {
-                    return Ok(ProviderStep::Next(
-                        result,
-                        Pagination::NextCursor(response_json.last_id.to_string()),
-                    ));
-                }
-                Ok(ProviderStep::End(result))
-            }
-            _ => {
-                info!(
-                    "Weverse module was not initialized, not scraping url: {}",
-                    state.url.0
-                );
-                Ok(ProviderStep::NotInitialized)
-            }
+                    // not sure why I have to do this here
+                    .collect::<Vec<ProviderMedia>>()
+            })
+            .collect::<Vec<ProviderMedia>>();
+        let has_more = !response_json.is_ended;
+        let result = ProviderResult {
+            images,
+            response_code,
+            response_delay,
+        };
+        if has_more {
+            return Ok(ProviderStep::Next(
+                result,
+                Pagination::NextCursor(response_json.last_id.to_string()),
+            ));
         }
+        Ok(ProviderStep::End(result))
     }
 
     fn on_error(&self, http_error: &HttpError) -> anyhow::Result<ProviderErrorHandle> {
@@ -380,8 +386,9 @@ impl Provider for WeverseArtistFeed {
                     return Ok(self
                         .credentials
                         .clone()
+                        .try_read()
                         .map_or(ProviderErrorHandle::Login, |creds| {
-                            ProviderErrorHandle::RefreshToken(creds.read().clone())
+                            ProviderErrorHandle::RefreshToken(creds.clone().unwrap())
                         }));
                 }
                 Ok(ProviderErrorHandle::Halt)
@@ -418,7 +425,7 @@ impl Provider for WeverseArtistFeed {
             .expect("Tried to authorize weverse module but the login credentials were not found");
         Ok(credentials)
     }
-    fn credentials(&self) -> Arc<RwLock<ProviderCredentials>> {
-        self.credentials.clone().unwrap()
+    fn credentials(&self) -> SharedCredentials {
+        self.credentials.clone()
     }
 }

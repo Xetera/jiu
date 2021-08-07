@@ -41,7 +41,7 @@ pub enum ScraperStep {
 fn write_provider_credentials(provider: &dyn Provider, credentials: ProviderCredentials) {
     let creds = provider.credentials();
     let mut credential_ref = creds.write();
-    *credential_ref = credentials;
+    *credential_ref = Some(credentials);
 }
 
 #[async_recursion]
@@ -87,7 +87,13 @@ async fn request_page<'a>(
             _ => (InternalScraperStep::Error(error), None),
         },
         Ok(ProviderStep::End(result)) => (InternalScraperStep::Data(result), None),
-        Ok(ProviderStep::NotInitialized) => (InternalScraperStep::Exit, None),
+        Ok(ProviderStep::NotInitialized) => {
+            info!(
+                "Skipping {} because the provider was not initialized",
+                provider.id().to_string()
+            );
+            (InternalScraperStep::Exit, None)
+        }
         Ok(ProviderStep::Next(result, pagination)) => {
             let page_size = provider.next_page_size(input.last_scrape, iteration);
 

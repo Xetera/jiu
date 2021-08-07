@@ -5,3 +5,4 @@
 env.toml
 seed.sql
 .env
+.idea

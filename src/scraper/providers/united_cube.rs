@@ -4,17 +4,17 @@ use crate::{
     scheduler::UnscopedLimiter,
     scraper::ProviderCredentials,
 };
+use anyhow::bail;
 use async_trait::async_trait;
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use log::error;
-use parking_lot::RwLock;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{env, path::Path, sync::Arc, time::Instant};
 
 pub struct UnitedCubeArtistFeed {
     pub client: Arc<Client>,
-    pub credentials: Option<SharedCredentials>,
+    pub credentials: SharedCredentials,
     pub rate_limiter: UnscopedLimiter,
 }
 
@@ -62,33 +62,33 @@ struct LoginResponse {
     refresh_token: String,
 }
 
-#[derive(Deserialize)]
-struct PostData {
-    path: String,
-    // status: Option<String>,
+/// Posts are divided between images and videos
+#[derive(Debug, Deserialize, Clone)]
+#[serde(tag = "type_code", content = "data")]
+enum MediaData {
+    #[serde(rename = "601")]
+    Image { path: String },
+    #[serde(rename = "602")]
+    Video { url: String, image: String },
+    #[serde(rename = "604")]
+    Post { title: String },
 }
 
-#[derive(Deserialize)]
-struct PostMedia {
-    type_code: String,
-    data: PostData,
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct Post {
     // slug: String,
     // content: String,
-    register_datetime: NaiveDateTime,
-    media: Vec<PostMedia>,
+    register_datetime: DateTime<Utc>,
+    media: Vec<MediaData>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct Page {
     has_next: bool,
     // has_prev: bool,
-    // next_num: null,
     // prev_num: null,
     page: i32,
+    next_num: Option<i32>,
     // pages: i32,
     // per_page: i32,
     // total: i32,
@@ -97,15 +97,23 @@ struct Page {
 
 const BASE_URL: &'static str = "https://www.united-cube.com";
 
-fn from_media_code(code: &str) -> Option<ProviderMediaType> {
-    match code {
-        "601" => Some(ProviderMediaType::Image),
-        "602" => Some(ProviderMediaType::Video),
-        _ => None,
-    }
+fn extract_url_and_id(path: &str, base_url: &url::Url) -> anyhow::Result<(url::Url, String)> {
+    // ucube is missing a leading slash in their links lol
+    let parsed_relative_url = format!("/{}", &path);
+    let url = base_url.join(&parsed_relative_url)?;
+    // .map_err(|result| {
+    //     anyhow::anyhow!(result)
+    // })?;
+    // unbelievably big brain conversion
+    let unique_identifier = Path::new(&parsed_relative_url)
+        .file_stem()
+        .and_then(|str| str.to_str().map(|result| result.to_owned()))
+        .ok_or(anyhow::anyhow!(
+            "Invalid file format: {}",
+            parsed_relative_url
+        ))?;
+    Ok((url, unique_identifier))
 }
-
-// impl Into
 
 #[async_trait]
 impl Provider for UnitedCubeArtistFeed {
@@ -118,8 +126,18 @@ impl Provider for UnitedCubeArtistFeed {
     {
         Self {
             client: input.client,
-            credentials: input.credentials,
+            credentials: create_credentials(),
             rate_limiter: Self::rate_limiter(),
+        }
+    }
+
+    fn requires_auth(&self) -> bool {
+        true
+    }
+
+    async fn initialize(&self) -> () {
+        if self.requires_auth() {
+            attempt_first_login(self, &self.credentials).await;
         }
     }
 
@@ -132,6 +150,7 @@ impl Provider for UnitedCubeArtistFeed {
             HttpError::ReqwestError(_err) => return Ok(ProviderErrorHandle::Halt),
             HttpError::FailStatus(err) | HttpError::UnexpectedBody(err) => err,
         };
+
         let body = match serde_json::from_str::<GenericError>(&err.body) {
             Err(err) => {
                 error!("Couldn't parse the response from united_cube");
@@ -141,11 +160,8 @@ impl Provider for UnitedCubeArtistFeed {
             Ok(body) => body,
         };
         Ok(if body.message == "Token Expired" && err.code == 400 {
-            self.credentials
-                .clone()
-                .map_or(ProviderErrorHandle::Login, |cred| {
-                    ProviderErrorHandle::RefreshToken(cred.read().clone())
-                })
+            let cred = self.credentials.read().clone();
+            ProviderErrorHandle::RefreshToken((cred).unwrap())
         } else {
             // I don't think there is any other response you can get if your token is expired
             // so we can probably assume that something else has gone wrong
@@ -170,12 +186,13 @@ impl Provider for UnitedCubeArtistFeed {
     }
 
     async fn unfold(&self, state: ProviderState) -> Result<ProviderStep, ProviderFailure> {
-        let credentials = match &self.credentials {
+        let creds = self.credentials.read().clone();
+        let credentials = match creds {
             Some(c) => c,
             None => return Ok(ProviderStep::NotInitialized),
         };
 
-        let token = credentials.read().access_token.clone();
+        let token = credentials.access_token.clone();
         let instant = Instant::now();
 
         let response = self
@@ -197,21 +214,45 @@ impl Provider for UnitedCubeArtistFeed {
             .flat_map(|post| {
                 post.media
                     .iter()
-                    .map(|media| {
-                        // ucube is missing a leading slash in their links lol
-                        let parsed_relative_url = format!("/{}", media.data.path);
-                        let url = cube_url.clone().join(&parsed_relative_url).unwrap();
-                        // unbelievably big brain conversion
-                        let unique_identifier = Path::new(&parsed_relative_url)
-                            .file_stem()
-                            .unwrap()
-                            .to_str()
-                            .unwrap()
-                            .to_owned();
-                        ProviderMedia {
-                            _type: from_media_code(&media.type_code)
-                                .expect(&format!("Invalid media code {}", &media.type_code)),
-                            media_url: url.as_str().to_owned(),
+                    .filter_map(|media| {
+                        let (_type, media_url, unique_identifier) = match &media {
+                            // we don't care about posts
+                            MediaData::Post { .. } => return None,
+                            // Every video on ucube is (probably) a link to an external youtube video
+                            // but we can't be sure
+                            MediaData::Video { url, .. } => {
+                                let is_probably_external_link = url.starts_with("http");
+                                if is_probably_external_link {
+                                    return None;
+                                }
+                                // assuming that a non-external link would follow the same pattern as
+                                match extract_url_and_id(url.as_str(), &cube_url) {
+                                    Err(err) => {
+                                        error!("Could not convert a non-external ucube video into a relative path");
+                                        error!("{:?}", err);
+                                        return None;
+                                    }
+                                    Ok((url, id)) => {
+                                        (ProviderMediaType::Video, url.as_str().to_owned(), id)
+                                    }
+                                }
+                            }
+                            MediaData::Image { path } => {
+                                match extract_url_and_id(path.as_str(), &cube_url) {
+                                    Err(err) => {
+                                        error!("Could not get relative path from a ucube image {}", path);
+                                        error!("{:?}", err);
+                                        return None
+                                    },
+                                    Ok((url, id)) => {
+                                        (ProviderMediaType::Image, url.as_str().to_owned(), id)
+                                    }
+                                }
+                            }
+                        };
+                        Some(ProviderMedia {
+                            _type,
+                            media_url,
                             // TODO: maybe add page urls to this anyways?
                             // united-cube doesn't have page-specific links, they all go to
                             // https://www.united-cube.com/club/qXmD_5exRnmZfkFIwR1cVA/board/cHTUTBaRRpqUWAL2c5nQiw#PostDetail
@@ -219,10 +260,10 @@ impl Provider for UnitedCubeArtistFeed {
                             page_url: None,
                             // same with reference URL
                             reference_url: None,
-                            post_date: Some(post.register_datetime.clone()),
+                            post_date: Some(post.register_datetime.naive_utc().clone()),
                             provider_metadata: None,
                             unique_identifier,
-                        }
+                        })
                     })
                     .collect::<Vec<ProviderMedia>>()
             })
@@ -233,18 +274,14 @@ impl Provider for UnitedCubeArtistFeed {
             response_code: status,
             response_delay: elapsed,
         };
-        if response_json.has_next {
-            Ok(ProviderStep::Next(
-                result,
-                Pagination::NextPage(response_json.page + 1),
-            ))
-        } else {
-            Ok(ProviderStep::End(result))
+        match response_json.next_num {
+            Some(next) => Ok(ProviderStep::Next(result, Pagination::NextPage(next))),
+            None => Ok(ProviderStep::End(result)),
         }
     }
 
-    fn credentials(&self) -> Arc<RwLock<ProviderCredentials>> {
-        self.credentials.clone().unwrap()
+    fn credentials(&self) -> SharedCredentials {
+        self.credentials.clone()
     }
 
     async fn login(&self) -> anyhow::Result<ProviderCredentials> {
@@ -254,7 +291,7 @@ impl Provider for UnitedCubeArtistFeed {
             .json(&LoginInput {
                 refresh_token: None,
                 path: "https://www.united-cube.com/signin".to_owned(),
-                id: env::var("UNITED_CUBE_USERNAME")
+                id: env::var("UNITED_CUBE_EMAIL")
                     .expect("Tried to login to united_cube without credentials"),
                 pw: env::var("UNITED_CUBE_PASSWORD").unwrap(),
                 remember_me: false,

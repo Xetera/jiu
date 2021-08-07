@@ -12,11 +12,15 @@ use std::{collections::HashSet, convert::TryInto, str::FromStr};
 pub type RunningProviders = HashSet<ScopedProvider>;
 
 /// Scheduled providers are ready to be processed
+#[derive(Debug)]
 pub struct ScheduledProviders(Vec<PendingProvider>);
 
 impl ScheduledProviders {
     pub fn providers(self) -> Vec<PendingProvider> {
         self.0
+    }
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 }
 
@@ -159,7 +163,7 @@ pub fn filter_scheduled(pending: Vec<PendingProvider>) -> ScheduledProviders {
                     let current_time = Utc::now();
                     let scheduled_scrape: DateTime<Utc> = DateTime::from_utc(last, Utc)
                         + Duration::from_std(pen.priority.added_duration()).unwrap();
-                    scheduled_scrape >= current_time
+                    current_time >= scheduled_scrape
                 })
             })
             .collect::<Vec<PendingProvider>>(),
