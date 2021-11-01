@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS provider_resource(
   last_scrape TIMESTAMP WITHOUT TIME ZONE NULL,
   -- the date last scrape was requested, this acts a lock to prevent resources from being accessed multiple times 
   last_queue TIMESTAMP WITHOUT TIME ZONE NULL,
-  created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+  created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
   UNIQUE(destination, name)
 );
 
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS scrape(
   provider_name TEXT,
   provider_destination TEXT,
   -- the priority this scrape was executed against
-  priority NOT NULL CHECK(priority >= 1 AND priority <= 10)
+  priority INTEGER NOT NULL CHECK(priority >= 1 AND priority <= 10),
   FOREIGN KEY (provider_name, provider_destination)
     REFERENCES provider_resource(name, destination) ON DELETE SET NULL ON UPDATE CASCADE
 );

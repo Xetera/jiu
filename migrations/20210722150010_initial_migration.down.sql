@@ -11,6 +11,4 @@ DROP TABLE scrape_request;
 
 DROP TABLE scrape;
 
-DROP TABLE source;
-
 DROP TABLE webhook;
