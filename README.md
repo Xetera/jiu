@@ -37,7 +37,7 @@ Anonymous request are always preferred when possible.
 
 There is a customizable login flow for providers that require authorization which allows logging into APIs after an authorization error, and persists additional data (such as a JWT token) to be shared across each provider during the lifetime of the process.
 
-The login flow is reversed engineered for providers that don't have a public API.
+The login flow is reverse engineered for providers that don't have a public API.
 
 > Juggling multiple accounts per provider is currently not supported and probably won't be as long as your accounts aren't getting banned (and if they are then you're sending too many requests and need to increase your rate limits).
 
