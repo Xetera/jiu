@@ -30,7 +30,7 @@ pub async fn latest_media_ids_from_provider(
     let out = sqlx::query!(
         "SELECT unique_identifier FROM media
         WHERE provider_name = $1 AND provider_destination = $2
-        order by discovered_at, id limit 10",
+        order by discovered_at desc, id limit 10",
         provider.name.to_string(),
         provider.destination
     )
@@ -111,7 +111,8 @@ pub async fn process_scrape<'a>(
                             posted_at,
                             discovered_at
                         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                        ON CONFLICT DO NOTHING returning *",
+                        ON CONFLICT (unique_identifier, provider_name) DO update set discovered_at = NOW() returning *",
+                        // sometimes we end up re-scraping the latest known images
                         &scrape.provider.name.to_string(),
                         &scrape.provider.destination,
                         scrape_request_row.id,
