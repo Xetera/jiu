@@ -4,7 +4,7 @@ use governor::{
     Jitter, Quota, RateLimiter,
 };
 use nonzero_ext::nonzero;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 /// Most providers use rate limiter at the domain level and not at the page level
 /// in order to prevent exceeding rate limits imposed by webservers
@@ -29,7 +29,7 @@ pub fn global_rate_limiter() -> GlobalRateLimiter {
 }
 
 /// Waits for a global rate limit to be up
-pub async fn wait_provider_turn(limiter: &GlobalRateLimiter) {
+pub async fn wait_provider_turn(limiter: Arc<GlobalRateLimiter>) {
     limiter
         .0
         // jitter to prevent multiple queued providers from trying to run all at once

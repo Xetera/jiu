@@ -43,7 +43,7 @@ pub struct ScrapeHistory {
     pub result_count: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 
 pub struct PendingProvider {
     pub id: i32,

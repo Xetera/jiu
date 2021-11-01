@@ -16,8 +16,8 @@ pub type RunningProviders = HashSet<ScopedProvider>;
 pub struct ScheduledProviders(Vec<PendingProvider>);
 
 impl ScheduledProviders {
-    pub fn providers(self) -> Vec<PendingProvider> {
-        self.0
+    pub fn providers(&self) -> &Vec<PendingProvider> {
+        &self.0
     }
     pub fn len(&self) -> usize {
         self.0.len()

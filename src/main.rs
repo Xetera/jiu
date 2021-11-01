@@ -19,11 +19,11 @@ struct Context {
 }
 
 async fn iter(
-    ctx: &Context,
-    pending: PendingProvider,
+    ctx: Arc<Context>,
+    pending: &PendingProvider,
     provider: &dyn Provider,
 ) -> anyhow::Result<()> {
-    let sp = pending.provider;
+    let sp = pending.provider.clone();
     let latest_data = latest_media_ids_from_provider(&ctx.db, &sp).await?;
     let step = ScrapeRequestInput {
         latest_data,
@@ -52,33 +52,42 @@ async fn job_loop(arc_db: Arc<Database>, client: Arc<Client>) {
     let running_providers: RwLock<RunningProviders> = RwLock::new(HashSet::default());
     loop {
         interval.tick().await;
-        match pending_scrapes(&arc_db, &running_providers).await {
-            Ok(pending) => {
-                debug!("pending = {:?}", pending);
-                let scheduled = filter_scheduled(pending);
-                debug!("scheduled = {:?}", scheduled);
-                if scheduled.len() == 0 {
-                    debug!("No providers waiting to be staged");
-                    continue;
-                }
-                if let Err(err) = mark_as_scheduled(&arc_db, &scheduled, &running_providers).await {
-                    error!("{:?}", err);
-                    continue;
-                };
-                if let Err(err) = run(Arc::clone(&arc_db), scheduled, &provider_map).await {
-                    error!("{:?}", err);
-                    continue;
-                }
+        let pending = match pending_scrapes(&arc_db, &running_providers).await {
+            Err(error) => {
+                println!("{:?}", error);
+                continue;
             }
-            _ => {}
+            Ok(result) => result,
         };
+        debug!("pending = {:?}", pending);
+        let scheduled = filter_scheduled(pending);
+        debug!("scheduled = {:?}", scheduled);
+        if scheduled.len() == 0 {
+            debug!("No providers waiting to be staged");
+            continue;
+        }
+        if let Err(err) = mark_as_scheduled(&arc_db, &scheduled, &running_providers).await {
+            error!("{:?}", err);
+            continue;
+        };
+        if let Err(err) = run(Arc::clone(&arc_db), &scheduled, &provider_map).await {
+            error!("{:?}", err);
+            continue;
+        }
+        debug!(
+            "Finished scraping {} providers",
+            scheduled.providers().len()
+        );
+        for provider in scheduled.providers() {
+            running_providers.write().remove(&provider.provider);
+        }
         ()
     }
 }
 
 async fn run(
     arc_db: Arc<Database>,
-    pending_providers: ScheduledProviders,
+    pending_providers: &ScheduledProviders,
     provider_map: &ProviderMap,
 ) -> Result<(), Box<dyn Error + Send>> {
     let providers = pending_providers.providers();
@@ -86,18 +95,18 @@ async fn run(
     // let pending_providers = pending_scrapes(&*arc_db).await?;
     debug!("Pending providers = {:?}", providers);
 
-    let ctx = Context {
+    let ctx = &Arc::new(Context {
         db: Arc::clone(&arc_db),
-    };
-    let rate_limiter = global_rate_limiter();
-    let futures = providers.into_iter().map(|sp| async {
+    });
+    let rate_limiter = &Arc::new(global_rate_limiter());
+    let futures = providers.into_iter().map(|sp| async move {
         info!("Waiting for rate limiter");
-        wait_provider_turn(&rate_limiter).await;
+        wait_provider_turn(Arc::clone(rate_limiter)).await;
         let provider = provider_map.get(&sp.provider.name).expect(&format!(
             "Tried to get a provider that doesn't exist {}",
             &sp.provider,
         ));
-        match iter(&ctx, sp, &**provider).await {
+        match iter(Arc::clone(ctx), &sp.clone(), &**provider).await {
             Err(err) => eprintln!("{:?}", err),
             Ok(_) => {}
         }
