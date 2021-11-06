@@ -85,7 +85,7 @@ pub async fn process_scrape<'a>(
     .await?;
     let scrape_id = out.id;
 
-    for (i, request) in scrape.requests.iter().enumerate() {
+    for (i , request) in scrape.requests.iter().enumerate() {
         match &request.step {
             ScraperStep::Data(provider_result) => {
                 let response_code = provider_result.response_code.as_u16();
@@ -95,10 +95,11 @@ pub async fn process_scrape<'a>(
                     RETURNING id",
                     scrape_id,
                     response_code as u32,
-                    // unsafe downcast from u128? I hope the request doesn't take 2 billion miliseconds kekw
+                    // unsafe downcast from u128? I hope the request doesn't take 2 billion milliseconds kekw
                     provider_result.response_delay.as_millis() as u32,
                     request.date,
-                    i as u32
+                    // pages are 1-indexed
+                    (i as i32) + 1
                 ).fetch_one(&mut tx).await?;
                 let mut images = provider_result.images.clone();
                 // we specifically need to reverse this list of images
