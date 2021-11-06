@@ -19,9 +19,15 @@ RUN cargo build --release
 RUN ls target/release
 
 # Second stage putting the build result into a debian jessie-slim image
-FROM debian:jessie-slim
+FROM debian:buster-slim
 ENV NAME=rust-docker
 ENV RUST_LOG=debug
 
+RUN apt-get update \
+    && apt-get install -y ca-certificates tzdata \
+    && rm -rf /var/lib/apt/lists/*
+RUN echo 'export LD_LIBRARY_PATH=/usr/local/lib' >> ~/.bash_profile && . ~/.bash_profile
+RUN bash -c "echo '/usr/local/lib64' >> /etc/ld.so.conf"
+RUN ldconfig
 COPY --from=builder /usr/src/builder/target/release/jiu /usr/local/bin/jiu
-CMD jiu
+CMD ["/usr/local/bin/jiu"]
