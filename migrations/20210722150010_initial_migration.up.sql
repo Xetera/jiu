@@ -1,7 +1,7 @@
 -- Add up migration script here
 CREATE TABLE IF NOT EXISTS webhook(
   id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  destination TEXT NOT NULL,
+  destination TEXT NOT NULL UNIQUE,
   created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
   -- extra data attached to a webhook invocation

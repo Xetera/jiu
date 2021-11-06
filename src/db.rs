@@ -30,7 +30,7 @@ pub async fn latest_media_ids_from_provider(
     let out = sqlx::query!(
         "SELECT unique_identifier FROM media
         WHERE provider_name = $1 AND provider_destination = $2
-        order by discovered_at desc, id limit 10",
+        order by id desc, discovered_at desc limit 100",
         provider.name.to_string(),
         provider.destination
     )
@@ -100,8 +100,13 @@ pub async fn process_scrape<'a>(
                     request.date,
                     i as u32
                 ).fetch_one(&mut tx).await?;
-                for media in provider_result.images.iter() {
-                    let _media_row = sqlx::query!(
+                let mut images = provider_result.images.clone();
+                // we specifically need to reverse this list of images
+                // to make sure that the images that were first scraped get inserted
+                // last with the highest id
+                images.reverse();
+                for media in images.iter() {
+                    sqlx::query!(
                         "INSERT INTO media (
                             provider_name,
                             provider_destination,
@@ -113,7 +118,7 @@ pub async fn process_scrape<'a>(
                             posted_at,
                             discovered_at
                         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                        ON CONFLICT (unique_identifier, provider_name) DO update set discovered_at = NOW() returning *",
+                        ON CONFLICT (image_url) DO update set discovered_at = NOW() returning *",
                         // sometimes we end up re-scraping the latest known images
                         &scrape.provider.name.to_string(),
                         &scrape.provider.destination,
