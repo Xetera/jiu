@@ -142,7 +142,7 @@ pub async fn scrape<'a>(
 
     let mut steps = futures::stream::unfold(Some(seed), |maybe_state| async {
         let state = maybe_state?;
-        debug!("Scraping URL: {:?}", state.url.0);
+        info!("Scraping URL: {:?}", state.url.0);
         Some(request_page(sp, provider, &state, input).await)
     })
     .boxed_local();
@@ -172,7 +172,7 @@ pub async fn scrape<'a>(
                     .take_while(|r| !input.latest_data.contains(&r.unique_identifier))
                     .collect::<Vec<ProviderMedia>>();
                 let new_image_count = images.len();
-                debug!("Found {} new images in {}", images.len(), sp);
+                info!("Found {} new images in {}", images.len(), sp);
 
                 scrape_requests.push(ScrapeRequest {
                     date,

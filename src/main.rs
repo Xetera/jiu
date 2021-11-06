@@ -7,7 +7,7 @@ use jiu::{
     scraper::{get_provider_map, scraper::scrape, Provider, ProviderMap, ScrapeRequestInput},
     webhook::dispatcher::dispatch_webhooks,
 };
-use log::{debug, error, info};
+use log::{debug, error, info, trace};
 use parking_lot::RwLock;
 use reqwest::Client;
 use sqlx::{Pool, Postgres};
@@ -58,11 +58,11 @@ async fn job_loop(arc_db: Arc<Database>, client: Arc<Client>) {
             }
             Ok(result) => result,
         };
-        debug!("pending = {:?}", pending);
+        trace!("pending = {:?}", pending);
         let scheduled = filter_scheduled(pending);
-        debug!("scheduled = {:?}", scheduled);
+        trace!("scheduled = {:?}", scheduled);
         if scheduled.len() == 0 {
-            debug!("No providers waiting to be staged");
+            trace!("No providers waiting to be staged");
             continue;
         }
         if let Err(err) = mark_as_scheduled(&arc_db, &scheduled, &running_providers).await {
