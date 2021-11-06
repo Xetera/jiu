@@ -1,12 +1,8 @@
-use super::*;
-use crate::{
-    request::{parse_successful_response, request_default_headers, HttpError},
-    scheduler::UnscopedLimiter,
-    scraper::{providers::ProviderMediaType, ProviderMedia, ProviderResult},
-};
+use std::{env, iter::FromIterator, sync::Arc, time::Instant};
+
 use async_trait::async_trait;
 use bimap::{BiHashMap, BiMap};
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use governor::Quota;
 use lazy_static::lazy_static;
 use log::info;
@@ -16,7 +12,14 @@ use reqwest::Client;
 use rsa::{PaddingScheme, PublicKey, RSAPublicKey};
 use serde::{Deserialize, Serialize};
 use sha1::Sha1;
-use std::{env, iter::FromIterator, sync::Arc, time::Instant};
+
+use crate::{
+    request::{HttpError, parse_successful_response, request_default_headers},
+    scheduler::UnscopedLimiter,
+    scraper::{ProviderMedia, ProviderResult, providers::ProviderMediaType},
+};
+
+use super::*;
 
 /// https://gist.github.com/Xetera/aa59e84f3959a37c16a3309b5d9ab5a0
 async fn get_public_key(client: &Client) -> anyhow::Result<RSAPublicKey> {
@@ -150,7 +153,7 @@ pub struct WeversePost {
     // community: WeverseCommunity,
     community_user: WeverseCommunityUser,
     photos: Option<Vec<WeversePhoto>>,
-    created_at: NaiveDateTime,
+    created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -225,7 +228,7 @@ fn url_from_post(artist_id: u32, post_id: u64, photo_id: u64) -> String {
         "https://weverse.io/{}/artist/{}?photoId={}",
         artist_name, post_id, photo_id
     )
-    .to_owned()
+        .to_owned()
 }
 
 const MAX_PAGESIZE: usize = 30;
@@ -235,8 +238,8 @@ const DEFAULT_PAGESIZE: usize = 16;
 #[async_trait]
 impl RateLimitable for WeverseArtistFeed {
     fn quota() -> Quota
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         default_quota()
     }
@@ -250,8 +253,8 @@ impl RateLimitable for WeverseArtistFeed {
 #[async_trait]
 impl Provider for WeverseArtistFeed {
     fn new(input: ProviderInput) -> Self
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         Self {
             credentials: create_credentials(),
@@ -344,7 +347,7 @@ impl Provider for WeverseArtistFeed {
                             // should be unique across all of weverse
                             _type: ProviderMediaType::Image,
                             unique_identifier: photo.id.to_string(),
-                            post_date: Some(post_created_at),
+                            post_date: Some(post_created_at.naive_utc()),
                             media_url: photo.org_img_url.clone(),
                             page_url: Some(page_url.clone()),
                             reference_url: Some(page_url.clone()),
@@ -355,7 +358,7 @@ impl Provider for WeverseArtistFeed {
                                 width: photo.org_img_width,
                                 thumbnail_url: photo.thumbnail_img_url.clone(),
                             })
-                            .ok(),
+                                .ok(),
                         }
                     })
                     // not sure why I have to do this here
@@ -378,18 +381,19 @@ impl Provider for WeverseArtistFeed {
     }
 
     fn on_error(&self, http_error: &HttpError) -> anyhow::Result<ProviderErrorHandle> {
-        match &http_error {
+        match http_error {
             HttpError::FailStatus(err) | HttpError::UnexpectedBody(err) => {
                 // :) I don't actually know if weverse returns a 401 on expired tokens
                 // but I can't test because their tokens last for 6 ENTIRE months!!!!
-                if err.code == 401 {
-                    return Ok(self
+                if err.code == 401 || err.code == 403 {
+                    let handle = self
                         .credentials
                         .clone()
                         .try_read()
                         .map_or(ProviderErrorHandle::Login, |creds| {
                             ProviderErrorHandle::RefreshToken(creds.clone().unwrap())
-                        }));
+                        });
+                    return Ok(handle);
                 }
                 Ok(ProviderErrorHandle::Halt)
             }

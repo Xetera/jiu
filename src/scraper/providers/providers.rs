@@ -50,11 +50,7 @@ pub struct ProviderResult {
 
 impl ProviderResult {
     pub fn with_images(&self, images: Vec<ProviderMedia>) -> Self {
-        Self {
-            images,
-            response_code: self.response_code,
-            response_delay: self.response_delay,
-        }
+        Self { images, ..*self }
     }
 }
 

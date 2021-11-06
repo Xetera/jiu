@@ -1,4 +1,4 @@
-use crate::models::{DatabaseWebhook, ScrapeRequestMedia, ScrapeRequestWithMedia};
+use crate::models::{DatabaseWebhook, PendingProvider, ScrapeRequestMedia, ScrapeRequestWithMedia};
 use crate::request::HttpError;
 use crate::scraper::scraper::{Scrape, ScraperStep};
 use crate::scraper::{ProviderFailure, ScopedProvider};
@@ -64,12 +64,14 @@ pub struct ProcessedScrape {
 pub async fn process_scrape<'a>(
     db: &Database,
     scrape: &Scrape<'a>,
+    pending: &PendingProvider,
 ) -> anyhow::Result<ProcessedScrape> {
     let mut tx = db.begin().await?;
     let out = sqlx::query!(
-        "INSERT INTO scrape (provider_name, provider_destination) VALUES ($1, $2) returning id",
+        "INSERT INTO scrape (provider_name, provider_destination, priority) VALUES ($1, $2, $3) returning id",
         scrape.provider.name.to_string(),
-        scrape.provider.destination
+        scrape.provider.destination,
+        i32::from(pending.priority)
     )
     .fetch_one(&mut tx)
     .await?;

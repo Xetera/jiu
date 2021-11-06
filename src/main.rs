@@ -5,7 +5,6 @@ use jiu::{
     models::PendingProvider,
     scheduler::*,
     scraper::{get_provider_map, scraper::scrape, Provider, ProviderMap, ScrapeRequestInput},
-    server::run_server,
     webhook::dispatcher::dispatch_webhooks,
 };
 use log::{debug, error, info};
@@ -30,7 +29,7 @@ async fn iter(
         last_scrape: pending.last_scrape,
     };
     let result = scrape(&sp, &*provider, &step).await?;
-    let processed_scrape = process_scrape(&ctx.db, &result).await?;
+    let processed_scrape = process_scrape(&ctx.db, &result, &pending).await?;
 
     let webhooks = webhooks_for_provider(&ctx.db, &sp).await?;
     let webhook_interactions = dispatch_webhooks(&result, webhooks).await;

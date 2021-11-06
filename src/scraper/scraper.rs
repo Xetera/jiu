@@ -2,9 +2,12 @@ use super::{
     providers::{Provider, ProviderFailure, ProviderState, ProviderStep, ScrapeRequestInput},
     ProviderCredentials, ProviderResult, ScopedProvider,
 };
-use crate::scraper::{
-    providers::{CredentialRefresh, ProviderErrorHandle},
-    ProviderMedia,
+use crate::{
+    scheduler::Priority,
+    scraper::{
+        providers::{CredentialRefresh, ProviderErrorHandle},
+        ProviderMedia,
+    },
 };
 use async_recursion::async_recursion;
 use chrono::{NaiveDateTime, Utc};

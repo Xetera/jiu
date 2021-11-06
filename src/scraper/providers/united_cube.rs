@@ -4,7 +4,6 @@ use crate::{
     scheduler::UnscopedLimiter,
     scraper::ProviderCredentials,
 };
-use anyhow::bail;
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use log::error;
