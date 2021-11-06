@@ -2,3 +2,5 @@ target
 .vscode
 dist
 manifests
+Dockerfile
+docker-compose.yaml
