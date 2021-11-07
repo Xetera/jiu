@@ -106,7 +106,7 @@ pub async fn update_priorities(
             FROM scrape s
             WHERE s.provider_name = pr.name
               AND s.provider_destination = pr.destination
-            ORDER BY last_scrape desc, id
+            ORDER BY s.scraped_at desc, id
             LIMIT 10
         ) s on True
         WHERE pr.enabled AND pr.id = ANY($1)

@@ -94,10 +94,13 @@ impl Priority {
             .filter(|history| history.result_count > 0)
             .collect::<Vec<&ScrapeHistory>>()
             .len();
+        // we want the amount of allowed empty scrapes to scale inversely with level
+        // so faster scrape rates have more leeway before they stop dropping down in levels
+        let expected_empty_scrapes = (((MAX_LEVEL + 1) - self.level) as f32 * 1.2).floor() as usize;
         if increases > 0 {
             // Any new result within the same priority level should result in a priority increase
             return Some(PriorityChange::Up);
-        } else if past_scrape_counts >= 3 {
+        } else if past_scrape_counts >= expected_empty_scrapes {
             return Some(PriorityChange::Down);
         } else {
             None
@@ -105,6 +108,7 @@ impl Priority {
     }
     pub fn unchecked_clamp(level: i32) -> Self {
         level
+            .clamp(MIN_LEVEL, MAX_LEVEL)
             .try_into()
             // something has gone very wrong if the level is out of bounds
             .expect(&format!("{} is not a valid priority", level))
