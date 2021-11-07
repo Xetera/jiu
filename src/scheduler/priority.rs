@@ -105,7 +105,6 @@ impl Priority {
     }
     pub fn unchecked_clamp(level: i32) -> Self {
         level
-            .clamp(MIN_LEVEL, MAX_LEVEL)
             .try_into()
             // something has gone very wrong if the level is out of bounds
             .expect(&format!("{} is not a valid priority", level))
