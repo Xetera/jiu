@@ -280,6 +280,9 @@ pub trait Provider: Sync + Send + RateLimitable {
             self.id().to_string()
         )
     }
+    fn ephemeral(&self) -> bool {
+        false
+    }
 }
 
 #[derive(

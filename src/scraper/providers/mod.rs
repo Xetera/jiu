@@ -27,7 +27,7 @@ pub struct PageSize(usize);
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct ScopedProvider {
     pub name: AllProviders,
-    pub destination: String,
+    pub destination: String
 }
 
 impl Display for ScopedProvider {

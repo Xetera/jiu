@@ -33,7 +33,7 @@ async fn iter(
     let mut result = scrape(&sp, &*provider, &step).await?;
 
     let webhooks = webhooks_for_provider(&ctx.db, &sp).await?;
-    let webhook_interactions = dispatch_webhooks(&result, webhooks).await;
+    let webhook_interactions = dispatch_webhooks(&*provider, &result, webhooks).await;
     // process scraping MUST come after webhook dispatching since it mutates the array by reversing it
     let processed_scrape = process_scrape(&ctx.db, &mut result, &pending).await?;
     submit_webhook_responses(&ctx.db, processed_scrape, webhook_interactions).await?;
@@ -45,7 +45,7 @@ async fn job_loop(arc_db: Arc<Database>, client: Arc<Client>) {
         Duration::from_secs(5)
     } else {
         // release code should not be scraping as often as debug
-        Duration::from_secs(120)
+        Duration::from_secs(20)
     };
     let mut interval = tokio::time::interval(scrape_duration);
     let provider_map = get_provider_map(&Arc::clone(&client))

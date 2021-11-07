@@ -1,18 +1,21 @@
-use super::discord::*;
-use crate::{
-    models::DatabaseWebhook,
-    request::{request_default_headers, HttpError},
-    scraper::{
-        scraper::{Scrape, ScraperStep},
-        AllProviders, ProviderMedia,
-    },
-    webhook::{webhook_type, WebhookDestination},
-};
+use std::{cmp::min, sync::RwLock, time::Instant};
+use super::super::scraper::Provider;
 use futures::{stream, StreamExt};
 use log::error;
 use reqwest::{Client, Response};
 use serde::Serialize;
-use std::{cmp::min, sync::RwLock, time::Instant};
+
+use crate::{
+    models::DatabaseWebhook,
+    request::{HttpError, request_default_headers},
+    scraper::{
+        AllProviders,
+        ProviderMedia, scraper::{Scrape, ScraperStep},
+    },
+    webhook::{webhook_type, WebhookDestination},
+};
+
+use super::discord::*;
 
 pub struct WebhookDispatch {
     pub webhook: DatabaseWebhook,
@@ -26,8 +29,16 @@ pub struct WebhookInteraction {
 }
 
 #[derive(Debug, Serialize)]
+pub struct WebhookProvider {
+    #[serde(rename = "type")]
+    pub _type: AllProviders,
+    pub id: String,
+    pub ephemeral: bool,
+}
+
+#[derive(Debug, Serialize)]
 pub struct WebhookPayload<'a> {
-    pub provider_type: AllProviders,
+    pub provider: WebhookProvider,
     // what even
     pub media: &'a Vec<&'a ProviderMedia>,
     pub metadata: Option<serde_json::Value>,
@@ -36,6 +47,7 @@ pub struct WebhookPayload<'a> {
 const WEBHOOK_DISPATCH_CONCURRENCY_LIMIT: usize = 8;
 
 pub async fn dispatch_webhooks<'a>(
+    provider: &dyn Provider,
     scrape: &Scrape<'a>,
     dispatch: Vec<DatabaseWebhook>,
 ) -> Vec<WebhookInteraction> {
@@ -62,7 +74,11 @@ pub async fn dispatch_webhooks<'a>(
             WebhookDestination::Custom => {
                 builder
                     .json(&WebhookPayload {
-                        provider_type: scrape.provider.name.clone(),
+                        provider: WebhookProvider {
+                            _type:  scrape.provider.name.clone(),
+                            id: scrape.provider.destination.clone(),
+                            ephemeral: provider.ephemeral()
+                        },
                         media: &media,
                         metadata: webhook.metadata.clone(),
                     })
@@ -87,7 +103,7 @@ pub async fn dispatch_webhooks<'a>(
                 }
             }
         }
-        .map_err(|err| HttpError::ReqwestError(err));
+            .map_err(|err| HttpError::ReqwestError(err));
         let response_time = instant.elapsed();
         ref_cell.write().unwrap().push(WebhookInteraction {
             webhook,
