@@ -22,6 +22,62 @@
       ]
     }
   },
+  "21f5fc03a66d40baa151a48179e913b502583bfddd40d791fcb295d4167f1c42": {
+    "query": "SELECT\n            pr.id,\n            pr.name,\n            pr.destination,\n            s.priority as resource_priority,\n            s.scraped_at,\n            s.priority,\n            (SELECT COUNT(*)\n              FROM media m\n              INNER JOIN scrape_request sr\n                on sr.id = m.scrape_request_id\n              where sr.scrape_id = s.id\n            ) as discovery_count\n        FROM provider_resource pr\n        LEFT JOIN LATERAL (\n            SELECT *\n            FROM scrape s\n            WHERE s.provider_name = pr.name\n              AND s.provider_destination = pr.destination\n            ORDER BY s.scraped_at desc, id\n            LIMIT 10\n        ) s on True\n        WHERE pr.enabled AND pr.id = ANY($1)\n        ORDER BY s.scraped_at desc",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 2,
+          "name": "destination",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 3,
+          "name": "resource_priority",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 4,
+          "name": "scraped_at",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 5,
+          "name": "priority",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 6,
+          "name": "discovery_count",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int4Array"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        null
+      ]
+    }
+  },
   "299433bbcf3b5df1fdf1e96cc0bf6c0128ee763636444ada07875180c9533c8b": {
     "query": "SELECT sr.scrape_id, scrape_request_id, page_url, image_url\n        FROM media m\n        join scrape_request sr\n            on sr.id = m.scrape_request_id\n        join scrape s\n            on s.id = sr.scrape_id\n        where s.id = ANY($1)",
     "describe": {
@@ -123,62 +179,6 @@
         true,
         true,
         true
-      ]
-    }
-  },
-  "5152711d2896afed80497c24bc489a442333b0cb6664243a85e05688253991af": {
-    "query": "SELECT\n            pr.id,\n            pr.name,\n            pr.destination,\n            pr.priority as resource_priority,\n            s.scraped_at,\n            s.priority,\n            (SELECT COUNT(*)\n              FROM media m\n              INNER JOIN scrape_request sr\n                on sr.id = m.scrape_request_id\n              where sr.scrape_id = s.id\n            ) as discovery_count\n        FROM provider_resource pr\n        LEFT JOIN LATERAL (\n            SELECT *\n            FROM scrape s\n            WHERE s.provider_name = pr.name\n              AND s.provider_destination = pr.destination\n            ORDER BY last_scrape desc, id\n            LIMIT 10\n        ) s on True\n        WHERE pr.enabled AND pr.id = ANY($1)",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 1,
-          "name": "name",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 2,
-          "name": "destination",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 3,
-          "name": "resource_priority",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 4,
-          "name": "scraped_at",
-          "type_info": "Timestamp"
-        },
-        {
-          "ordinal": 5,
-          "name": "priority",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 6,
-          "name": "discovery_count",
-          "type_info": "Int8"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int4Array"
-        ]
-      },
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        true,
-        true,
-        null
       ]
     }
   },
