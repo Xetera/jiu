@@ -124,7 +124,6 @@ pub async fn update_priorities(
         )
     });
     for ((id, name, destination, resource_priority), rows) in &groups {
-        // let a = rows.group_by(|a| a.ed).collect();
         let histories = rows
             .filter(|row| row.last_scrape.is_some())
             .map(|row| ScrapeHistory {

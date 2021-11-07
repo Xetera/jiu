@@ -1,19 +1,21 @@
-use super::{
-    providers::{Provider, ProviderFailure, ProviderState, ProviderStep, ScrapeRequestInput},
-    ProviderCredentials, ProviderResult, ScopedProvider,
-};
-use crate::{
-    scheduler::Priority,
-    scraper::{
-        providers::{CredentialRefresh, ProviderErrorHandle},
-        ProviderMedia,
-    },
-};
+use std::time::Instant;
+
 use async_recursion::async_recursion;
 use chrono::{NaiveDateTime, Utc};
 use futures::StreamExt;
 use log::{debug, info};
-use std::time::Instant;
+
+use crate::{
+    scraper::{
+        ProviderMedia,
+        providers::{CredentialRefresh, ProviderErrorHandle},
+    },
+};
+
+use super::{
+    ProviderCredentials,
+    ProviderResult, providers::{Provider, ProviderFailure, ProviderState, ProviderStep, ScrapeRequestInput}, ScopedProvider,
+};
 
 #[derive(Debug)]
 pub struct Scrape<'a> {
@@ -145,7 +147,7 @@ pub async fn scrape<'a>(
         info!("Scraping URL: {:?}", state.url.0);
         Some(request_page(sp, provider, &state, input).await)
     })
-    .boxed_local();
+        .boxed_local();
 
     let mut scrape_requests: Vec<ScrapeRequest> = vec![];
     let scrape_start = Instant::now();

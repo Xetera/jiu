@@ -61,9 +61,10 @@ pub struct ProcessedScrape {
     scrape_id: i32,
 }
 
+/// Adds scrapes to the db. Reverses the scrape list as a side effect
 pub async fn process_scrape<'a>(
     db: &Database,
-    scrape: &Scrape<'a>,
+    scrape: &mut Scrape<'a>,
     pending: &PendingProvider,
 ) -> anyhow::Result<ProcessedScrape> {
     let mut tx = db.begin().await?;
@@ -84,8 +85,13 @@ pub async fn process_scrape<'a>(
     .fetch_one(db)
     .await?;
     let scrape_id = out.id;
+    let requests = &mut scrape.requests;
+    // we specifically need to reverse this list of requests/images
+    // to make sure that the images that were first scraped get inserted
+    // last with the highest id
+    requests.reverse();
 
-    for (i , request) in scrape.requests.iter().enumerate() {
+    for (i , request) in requests.iter().enumerate() {
         match &request.step {
             ScraperStep::Data(provider_result) => {
                 let response_code = provider_result.response_code.as_u16();
@@ -102,9 +108,6 @@ pub async fn process_scrape<'a>(
                     (i as i32) + 1
                 ).fetch_one(&mut tx).await?;
                 let mut images = provider_result.images.clone();
-                // we specifically need to reverse this list of images
-                // to make sure that the images that were first scraped get inserted
-                // last with the highest id
                 images.reverse();
                 for media in images.iter() {
                     sqlx::query!(

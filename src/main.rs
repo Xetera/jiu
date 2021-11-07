@@ -30,8 +30,8 @@ async fn iter(
         latest_data,
         last_scrape: pending.last_scrape,
     };
-    let result = scrape(&sp, &*provider, &step).await?;
-    let processed_scrape = process_scrape(&ctx.db, &result, &pending).await?;
+    let mut result = scrape(&sp, &*provider, &step).await?;
+    let processed_scrape = process_scrape(&ctx.db, &mut result, &pending).await?;
 
     let webhooks = webhooks_for_provider(&ctx.db, &sp).await?;
     let webhook_interactions = dispatch_webhooks(&result, webhooks).await;
