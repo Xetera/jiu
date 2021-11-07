@@ -83,8 +83,9 @@ pub async fn mark_as_scheduled(
 
 pub async fn update_priorities(
     db: &Database,
-    pending_providers: &[PendingProvider],
+    sp:  &ScheduledProviders
 ) -> anyhow::Result<()> {
+    let pending_providers = &sp.0;
     let providers = sqlx::query!(
         "SELECT
             pr.id,

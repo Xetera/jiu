@@ -1,17 +1,19 @@
+use std::{collections::HashSet, error::Error, sync::Arc, time::Duration};
+
 use actix_web;
 use futures::future::join_all;
-use jiu::{
-    db::*,
-    models::PendingProvider,
-    scheduler::*,
-    scraper::{get_provider_map, scraper::scrape, Provider, ProviderMap, ScrapeRequestInput},
-    webhook::dispatcher::dispatch_webhooks,
-};
 use log::{debug, error, info, trace};
 use parking_lot::RwLock;
 use reqwest::Client;
 use sqlx::{Pool, Postgres};
-use std::{collections::HashSet, error::Error, sync::Arc, time::Duration};
+
+use jiu::{
+    db::*,
+    models::PendingProvider,
+    scheduler::*,
+    scraper::{get_provider_map, Provider, ProviderMap, scraper::scrape, ScrapeRequestInput},
+    webhook::dispatcher::dispatch_webhooks,
+};
 
 struct Context {
     db: Arc<Pool<Postgres>>,
@@ -65,6 +67,12 @@ async fn job_loop(arc_db: Arc<Database>, client: Arc<Client>) {
             trace!("No providers waiting to be staged");
             continue;
         }
+        // TODO: this should be happening at the end of the scrape, not start
+        if let Some(err) = update_priorities(&arc_db, &scheduled).await.err() {
+            // should an error here be preventing the scrape?
+            // Could end up spamming a provider if it's stuck at a high value
+            error!("{:?}", err);
+        };
         if let Err(err) = mark_as_scheduled(&arc_db, &scheduled, &running_providers).await {
             error!("{:?}", err);
             continue;

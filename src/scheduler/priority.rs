@@ -117,5 +117,3 @@ impl Priority {
         }
     }
 }
-
-pub fn update_priority() {}
