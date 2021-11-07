@@ -122,8 +122,6 @@ There is currently no retry mechanism for webhooks that fail to deliver successf
 To create a production-ready image, make sure to run `cargo sqlx generate` before building if you modified any of the
 SQL queries.
 
-WIP
-
 > If you would like to use this project, please change the `USER_AGENT` environment variable to identify your crawler accurately.
 
 Built for [simp.pics](https://github.com/xetera/simp.pics)
