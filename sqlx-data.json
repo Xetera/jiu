@@ -22,88 +22,6 @@
       ]
     }
   },
-  "1cf29319f3378cb257cf4ddc10a13697b50c0a1720602eb18c356ebf4dc7f98b": {
-    "query": "INSERT INTO media (\n                            provider_name,\n                            provider_destination,\n                            scrape_request_id,\n                            image_url,\n                            page_url,\n                            reference_url,\n                            unique_identifier,\n                            posted_at,\n                            discovered_at\n                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)\n                        ON CONFLICT (unique_identifier, provider_name) DO update set discovered_at = NOW() returning *",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 1,
-          "name": "provider_name",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 2,
-          "name": "provider_destination",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 3,
-          "name": "scrape_request_id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 4,
-          "name": "image_url",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 5,
-          "name": "page_url",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 6,
-          "name": "reference_url",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 7,
-          "name": "unique_identifier",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 8,
-          "name": "posted_at",
-          "type_info": "Timestamp"
-        },
-        {
-          "ordinal": 9,
-          "name": "discovered_at",
-          "type_info": "Timestamp"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Text",
-          "Text",
-          "Int4",
-          "Text",
-          "Text",
-          "Text",
-          "Text",
-          "Timestamp",
-          "Timestamp"
-        ]
-      },
-      "nullable": [
-        false,
-        true,
-        true,
-        true,
-        false,
-        true,
-        true,
-        false,
-        true,
-        false
-      ]
-    }
-  },
   "299433bbcf3b5df1fdf1e96cc0bf6c0128ee763636444ada07875180c9533c8b": {
     "query": "SELECT sr.scrape_id, scrape_request_id, page_url, image_url\n        FROM media m\n        join scrape_request sr\n            on sr.id = m.scrape_request_id\n        join scrape s\n            on s.id = sr.scrape_id\n        where s.id = ANY($1)",
     "describe": {
@@ -542,6 +460,27 @@
       ]
     }
   },
+  "c4f3edadfc3c1119fc2a8b561a512cae31cecee4336add5411a786586f3210a5": {
+    "query": "SELECT unique_identifier FROM media\n        WHERE provider_name = $1 AND provider_destination = $2\n        order by id desc, discovered_at desc limit 100",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "unique_identifier",
+          "type_info": "Text"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text"
+        ]
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
   "cd8f4252ecc21f84c3d65093ec5c87580f7c5d9cdf5f767c79e39018eb87e4a6": {
     "query": "INSERT INTO scrape (provider_name, provider_destination, priority) VALUES ($1, $2, $3) returning id",
     "describe": {
@@ -564,27 +503,6 @@
       ]
     }
   },
-  "cde854a453480cebc72bc5f93bca62224d1a9a7f9dfe6a8931e826dc9c0b7341": {
-    "query": "SELECT unique_identifier FROM media\n        WHERE provider_name = $1 AND provider_destination = $2\n        order by discovered_at desc, id limit 10",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "unique_identifier",
-          "type_info": "Text"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Text",
-          "Text"
-        ]
-      },
-      "nullable": [
-        false
-      ]
-    }
-  },
   "d1d471d3f9095ebb9d2dc56aab261193cdbd35cb2b176abe518afff386974e02": {
     "query": "INSERT INTO scrape_error (scrape_id, response_code)\n                                VALUES ($1, $2)",
     "describe": {
@@ -596,6 +514,88 @@
         ]
       },
       "nullable": []
+    }
+  },
+  "f1113a322ab52cfaa9bd33a5c29dcfc4fce2637dad650a25fb464266d0be97d6": {
+    "query": "INSERT INTO media (\n                            provider_name,\n                            provider_destination,\n                            scrape_request_id,\n                            image_url,\n                            page_url,\n                            reference_url,\n                            unique_identifier,\n                            posted_at,\n                            discovered_at\n                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)\n                        ON CONFLICT (image_url) DO update set discovered_at = NOW() returning *",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "provider_name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 2,
+          "name": "provider_destination",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 3,
+          "name": "scrape_request_id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 4,
+          "name": "image_url",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 5,
+          "name": "page_url",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 6,
+          "name": "reference_url",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 7,
+          "name": "unique_identifier",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 8,
+          "name": "posted_at",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 9,
+          "name": "discovered_at",
+          "type_info": "Timestamp"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text",
+          "Int4",
+          "Text",
+          "Text",
+          "Text",
+          "Text",
+          "Timestamp",
+          "Timestamp"
+        ]
+      },
+      "nullable": [
+        false,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        false,
+        true,
+        false
+      ]
     }
   }
 }
