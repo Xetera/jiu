@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS scrape(
   provider_destination TEXT,
   -- the priority this scrape was executed against
   priority INTEGER NOT NULL CHECK(priority >= 1 AND priority <= 10),
+  scraped_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
   FOREIGN KEY (provider_name, provider_destination)
     REFERENCES provider_resource(name, destination) ON DELETE SET NULL ON UPDATE CASCADE
 );

@@ -68,6 +68,12 @@ enum PriorityChange {
     Down,
 }
 
+impl Default for Priority {
+    fn default() -> Self {
+        Priority::unchecked_clamp(5)
+    }
+}
+
 impl Priority {
     pub fn added_duration(&self) -> Duration {
         self.duration
@@ -99,7 +105,7 @@ impl Priority {
     }
     pub fn unchecked_clamp(level: i32) -> Self {
         level
-            .clamp(MIN_LEVEL, MIN_LEVEL)
+            .clamp(MIN_LEVEL, MAX_LEVEL)
             .try_into()
             // something has gone very wrong if the level is out of bounds
             .expect(&format!("{} is not a valid priority", level))

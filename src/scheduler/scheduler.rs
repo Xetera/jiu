@@ -91,8 +91,8 @@ pub async fn update_priorities(
             pr.id,
             pr.name,
             pr.destination,
-            pr.priority as resource_priority,
-            pr.last_scrape,
+            s.priority as resource_priority,
+            s.scraped_at,
             s.priority,
             (SELECT COUNT(*)
               FROM media m
@@ -109,7 +109,8 @@ pub async fn update_priorities(
             ORDER BY last_scrape desc, id
             LIMIT 10
         ) s on True
-        WHERE pr.enabled AND pr.id = ANY($1)",
+        WHERE pr.enabled AND pr.id = ANY($1)
+        ORDER BY s.scraped_at desc",
         &pending_providers.iter().map(|pp| pp.id).collect::<Vec<_>>()
     )
     .fetch_all(db)
@@ -125,10 +126,10 @@ pub async fn update_priorities(
     });
     for ((id, name, destination, resource_priority), rows) in &groups {
         let histories = rows
-            .filter(|row| row.last_scrape.is_some())
+            .filter(|row| row.scraped_at.is_some())
             .map(|row| ScrapeHistory {
-                date: row.last_scrape.unwrap(),
-                priority: Priority::unchecked_clamp(row.priority.unwrap()),
+                date: row.scraped_at.unwrap(),
+                priority: Priority::unchecked_clamp(row.priority),
                 result_count: row.discovery_count.unwrap_or(0i64).try_into().unwrap(),
                 provider: ScopedProvider {
                     destination: destination.clone(),

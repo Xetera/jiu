@@ -31,17 +31,18 @@ async fn iter(
         last_scrape: pending.last_scrape,
     };
     let mut result = scrape(&sp, &*provider, &step).await?;
-    let processed_scrape = process_scrape(&ctx.db, &mut result, &pending).await?;
 
     let webhooks = webhooks_for_provider(&ctx.db, &sp).await?;
     let webhook_interactions = dispatch_webhooks(&result, webhooks).await;
+    // process scraping MUST come after webhook dispatching since it mutates the array by reversing it
+    let processed_scrape = process_scrape(&ctx.db, &mut result, &pending).await?;
     submit_webhook_responses(&ctx.db, processed_scrape, webhook_interactions).await?;
     Ok(())
 }
 
 async fn job_loop(arc_db: Arc<Database>, client: Arc<Client>) {
     let scrape_duration = if cfg!(debug_assertions) {
-        Duration::from_secs(10)
+        Duration::from_secs(5)
     } else {
         // release code should not be scraping as often as debug
         Duration::from_secs(120)
