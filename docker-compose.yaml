@@ -1,17 +1,31 @@
 version: "3.5"
 
+networks:
+  jiu_net:
+
 volumes:
   jiu_data:
 
 services: 
   jiu_db:
     image: postgres:13
-    container_name: jiu_data
+    container_name: jiu_db
     volumes:
       - jiu_data:/var/lib/postgresql/data
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
       POSTGRES_DB: jiu
+    networks:
+      - jiu_net
     ports:
       - 5431:5432
+  jiu:
+    image: rust:1.55
+    volumes:
+      - ./:/app
+    networks:
+      - jiu_net
+    environment:
+      USER: xetera
+      DATABASE_URL: postgres://postgres:password@jiu_db:5431/jiu
