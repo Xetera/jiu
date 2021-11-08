@@ -57,11 +57,12 @@ async fn request_page<'a>(
     input: &ScrapeRequestInput,
 ) -> (InternalScraperStep, Option<ProviderState>) {
     let iteration = state.iteration;
+    let error_step = |error| (InternalScraperStep::Error(error), None);
     match provider.unfold(state.to_owned()).await {
         // we have to indicate an error to the consumer and stop iteration on the next cycle
         Err(error) => match &error {
             ProviderFailure::HttpError(http_error) => match provider.on_error(http_error) {
-                Ok(ProviderErrorHandle::Halt) => (InternalScraperStep::Error(error), None),
+                Ok(ProviderErrorHandle::Halt) => error_step(error),
                 Ok(ProviderErrorHandle::RefreshToken(credentials)) => {
                     debug!(
                         "Triggering token refresh flow for {}",
@@ -82,14 +83,14 @@ async fn request_page<'a>(
                                 Err(_error) => (InternalScraperStep::Error(error), None),
                             }
                         }
-                        Ok(CredentialRefresh::Halt) => (InternalScraperStep::Error(error), None),
-                        _ => (InternalScraperStep::Error(error), None),
+                        Ok(CredentialRefresh::Halt) => error_step(error),
+                        _ => error_step(error),
                     }
                 }
-                _ => (InternalScraperStep::Error(error), None),
+                _ => error_step(error),
             },
             // TODO: reduce this nested boilerplate by implementing [From] for a result type?
-            _ => (InternalScraperStep::Error(error), None),
+            _ => error_step(error),
         },
         Ok(ProviderStep::End(result)) => (InternalScraperStep::Data(result), None),
         Ok(ProviderStep::NotInitialized) => {
@@ -110,7 +111,7 @@ async fn request_page<'a>(
             );
 
             match maybe_next_url {
-                Err(err) => (InternalScraperStep::Error(err), None),
+                Err(err) => error_step(err),
                 Ok(url) => {
                     let next_state = ProviderState {
                         id,
