@@ -72,7 +72,7 @@ pub async fn process_scrape<'a>(
         "INSERT INTO scrape (provider_name, provider_destination, priority) VALUES ($1, $2, $3) returning id",
         scrape.provider.name.to_string(),
         scrape.provider.destination,
-        i32::from(pending.priority)
+        pending.priority.level
     )
     .fetch_one(&mut tx)
     .await?;
@@ -91,7 +91,7 @@ pub async fn process_scrape<'a>(
     // last with the highest id
     requests.reverse();
 
-    for (i , request) in requests.iter().enumerate() {
+    for (i, request) in requests.iter().enumerate() {
         match &request.step {
             ScraperStep::Data(provider_result) => {
                 let response_code = provider_result.response_code.as_u16();

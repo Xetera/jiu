@@ -17,7 +17,8 @@ url = "2.2.2"
 better-panic = "0.2.0"
 futures = "0.3.15"
 thiserror = "1.0.26"
-sqlx = { version = "0.5.5", features = ["runtime-tokio-rustls", "postgres", "chrono", "offline", "json"] }
+num-traits = "0.2.14"
+sqlx = { version = "0.5.5", features = ["runtime-tokio-rustls", "postgres", "chrono", "offline", "json", "bigdecimal"] }
 dotenv = "0.15.0"
 log = "0.4.0"
 env_logger = "0.8.4"

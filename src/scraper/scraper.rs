@@ -5,16 +5,14 @@ use chrono::{NaiveDateTime, Utc};
 use futures::StreamExt;
 use log::{debug, info};
 
-use crate::{
-    scraper::{
-        ProviderMedia,
-        providers::{CredentialRefresh, ProviderErrorHandle},
-    },
+use crate::scraper::{
+    providers::{CredentialRefresh, ProviderErrorHandle},
+    ProviderMedia,
 };
 
 use super::{
-    ProviderCredentials,
-    ProviderResult, providers::{Provider, ProviderFailure, ProviderState, ProviderStep, ScrapeRequestInput}, ScopedProvider,
+    providers::{Provider, ProviderFailure, ProviderState, ProviderStep, ScrapeRequestInput},
+    ProviderCredentials, ProviderResult, ScopedProvider,
 };
 
 #[derive(Debug)]
@@ -68,19 +66,28 @@ async fn request_page<'a>(
                         "Triggering token refresh flow for {}",
                         provider.id().to_string()
                     );
+                    let write_credentials_and_continue = |creds: ProviderCredentials| {
+                        write_provider_credentials(provider, creds);
+                        request_page(sp, provider, state, input)
+                    };
                     match provider.token_refresh(&credentials).await {
                         Ok(CredentialRefresh::Result(credentials)) => {
-                            write_provider_credentials(provider, credentials);
-                            request_page(sp, provider, state, input).await
+                            write_credentials_and_continue(credentials).await
                         }
                         Ok(CredentialRefresh::TryLogin) => {
                             debug!("Triggering login flow for {}", provider.id().to_string());
                             match provider.login().await {
                                 Ok(credentials) => {
-                                    write_provider_credentials(provider, credentials);
-                                    request_page(sp, provider, state, input).await
+                                    write_credentials_and_continue(credentials).await
                                 }
-                                Err(_error) => (InternalScraperStep::Error(error), None),
+                                Err(err) => {
+                                    debug!(
+                                        "Error trying to login to {}: {:?}",
+                                        provider.id().to_string(),
+                                        err
+                                    );
+                                    error_step(error)
+                                }
                             }
                         }
                         Ok(CredentialRefresh::Halt) => error_step(error),
@@ -148,7 +155,7 @@ pub async fn scrape<'a>(
         info!("Scraping URL: {:?}", state.url.0);
         Some(request_page(sp, provider, &state, input).await)
     })
-        .boxed_local();
+    .boxed_local();
 
     let mut scrape_requests: Vec<ScrapeRequest> = vec![];
     let scrape_start = Instant::now();
@@ -191,7 +198,9 @@ pub async fn scrape<'a>(
                     break;
                 }
                 let pagination_limit = provider.max_pagination();
-                if scrape_requests.len() as u16 > pagination_limit {
+                // only looking at pagination limit if there's at least one image
+                // that's been scraped in the past
+                if page.images.len() > 1 && scrape_requests.len() as u16 > pagination_limit {
                     info!(
                         "[{}] has reached its pagination limit of {}",
                         sp, pagination_limit

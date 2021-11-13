@@ -1,20 +1,19 @@
-use crate::models::ScrapeHistory;
+use num_traits::FromPrimitive;
+use sqlx::types::BigDecimal;
 use std::{
     convert::{TryFrom, TryInto},
     time::Duration,
 };
 
+use crate::models::ScrapeHistory;
+
 #[derive(Debug)]
-pub struct InvalidPriority(i32);
+pub struct InvalidPriority(f32);
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Hash)]
 pub struct Priority {
-    level: i32,
-    duration: Duration,
+    pub level: BigDecimal,
 }
-
-const MIN_LEVEL: i32 = 1;
-const MAX_LEVEL: i32 = 10;
 
 const HOURS_BY_SECS: u64 = 60 * 60;
 
@@ -26,40 +25,11 @@ const fn days(num: u64) -> Duration {
     Duration::from_secs(HOURS_BY_SECS * 24 * num)
 }
 
-fn level_to_duration(level: i32) -> Duration {
-    match level {
-        // updated very frequently
-        MIN_LEVEL => hours(2),
-        2 => hours(8),
-        3 => hours(12),
-        4 => hours(18),
-        5 => hours(24),
-        6 => hours(36),
-        7 => days(2),
-        8 => days(4),
-        9 => days(5),
-        // updated very infrequently
-        MAX_LEVEL => days(7),
-        ffs @ _ => panic!("You were being lazy and didn't feel like wrapping priority levels in a newtype and now {} came back to bite you in the ass, good job idiot", ffs),
-    }
-}
-
-impl TryFrom<i32> for Priority {
-    type Error = InvalidPriority;
-    fn try_from(level: i32) -> Result<Self, Self::Error> {
-        if level < MIN_LEVEL || level > MAX_LEVEL {
-            return Err(InvalidPriority(level));
-        };
-        Ok(Self {
-            level,
-            duration: level_to_duration(level),
-        })
-    }
-}
-
-impl From<Priority> for i32 {
-    fn from(priority: Priority) -> Self {
-        priority.level.try_into().unwrap()
+impl From<f32> for Priority {
+    fn from(level: f32) -> Self {
+        Self {
+            level: BigDecimal::from_f32(level).unwrap(),
+        }
     }
 }
 
@@ -70,59 +40,65 @@ enum PriorityChange {
 
 impl Default for Priority {
     fn default() -> Self {
-        Priority::unchecked_clamp(5)
+        Priority::unchecked_clamp(1f32)
     }
 }
 
+// fn priority_weights(target: i32){
+//     (0..).map(|num|)
+// }
+
+const MAX_RESULT_CONTRIBUTION: u32 = 3;
+
+const MIN_PRIORITY: f32 = 0.07;
+const MAX_PRIORITY: f32 = 1.75;
+
 impl Priority {
-    pub fn added_duration(&self) -> Duration {
-        self.duration
-    }
-    fn change(&self, history: &[ScrapeHistory]) -> Option<PriorityChange> {
-        let same_priority_scrapes = history
-            .iter()
-            // the history could've jumped between 2 priorities within the same ScrapeHistory.
-            // We only need the last chain of similar scrapes
-            // For example: [A, A, A, B, B, A, A]
-            // should result in
-            // [A, A, A]
-            .take_while(|history| history.priority.level == self.level)
-            .collect::<Vec<&ScrapeHistory>>();
-        let past_scrape_counts = same_priority_scrapes.len();
-        let increases = same_priority_scrapes
-            .into_iter()
-            .filter(|history| history.result_count > 0)
-            .collect::<Vec<&ScrapeHistory>>()
-            .len();
-        // we want the amount of allowed empty scrapes to scale inversely with level
-        // so faster scrape rates have more leeway before they stop dropping down in levels
-        let expected_empty_scrapes = (((MAX_LEVEL + 1) - self.level) as f32 * 1.2).floor() as usize;
-        if increases > 0 {
-            // Any new result within the same priority level should result in a priority increase
-            return Some(PriorityChange::Up);
-        } else if past_scrape_counts >= expected_empty_scrapes {
-            return Some(PriorityChange::Down);
-        } else {
-            None
-        }
-    }
-    pub fn unchecked_clamp(level: i32) -> Self {
-        level
-            .clamp(MIN_LEVEL, MAX_LEVEL)
-            .try_into()
-            // something has gone very wrong if the level is out of bounds
-            .expect(&format!("{} is not a valid priority", level))
-    }
     /// Decide the next priority based on the the recent scrape history of the
     /// provider priority.
     /// This function specifically borrows self as the result is compared with self
     /// to detect change
     pub fn next(&self, history: &[ScrapeHistory]) -> Self {
-        let level = self.level;
-        match self.change(history) {
-            None => *self,
-            Some(PriorityChange::Up) => Priority::unchecked_clamp(level + 1),
-            Some(PriorityChange::Down) => Priority::unchecked_clamp(level - 1),
+        let past_scrape_count = history.len() as u32;
+        // let same_priority_scrapes = history
+        //     .iter()
+        //     // the history could've jumped between 2 priorities within the same ScrapeHistory.
+        //     // We only need the last chain of similar scrapes
+        //     // For example: [A, A, A, B, B, A, A]
+        //     // should result in
+        //     // [A, A, A]
+        //     .take_while(|history| history.priority.level == self.level)
+        //     .collect::<Vec<&ScrapeHistory>>();
+        // let past_scrape_counts = same_priority_scrapes.len();
+        let increases = history
+            .into_iter()
+            .enumerate()
+            // .map(|(i, history)| history.result_count.min(MAX_RESULT_CONTRIBUTION) * (past_scrape_count - i as u32))
+            .map(|(i, history)| history.result_count.min(MAX_RESULT_CONTRIBUTION))
+            .sum::<u32>();
+
+        let level =
+            (increases / past_scrape_count) as f32 * (MAX_PRIORITY - MIN_PRIORITY) + MIN_PRIORITY;
+        Self {
+            level: level.try_into().unwrap(),
         }
+        // // we want the amount of allowed empty scrapes to scale inversely with level
+        // // so faster scrape rates have more leeway before they stop dropping down in levels
+        // let expected_empty_scrapes = (((MAX_LEVEL + 1f32) - self.level) * 1.2).floor() as usize;
+        // if increases > 0 {
+        //     // Any new result within the same priority level should result in a priority increase
+        //     return Some(PriorityChange::Up);
+        // } else if past_scrape_counts >= expected_empty_scrapes {
+        //     return Some(PriorityChange::Down);
+        // } else {
+        //     None
+        // }
+    }
+    pub fn unchecked_clamp(level: f32) -> Self {
+        level
+            .clamp(MIN_PRIORITY, MAX_PRIORITY)
+            .try_into()
+            // something has gone very wrong if the level is out of bounds
+            .expect(&format!("{} is not a valid priority", level))
     }
 }

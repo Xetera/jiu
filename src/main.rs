@@ -11,9 +11,10 @@ use jiu::{
     db::*,
     models::PendingProvider,
     scheduler::*,
-    scraper::{get_provider_map, Provider, ProviderMap, scraper::scrape, ScrapeRequestInput},
+    scraper::{get_provider_map, scraper::scrape, Provider, ProviderMap, ScrapeRequestInput},
     webhook::dispatcher::dispatch_webhooks,
 };
+use tokio::join;
 
 struct Context {
     db: Arc<Pool<Postgres>>,
@@ -40,100 +41,97 @@ async fn iter(
     Ok(())
 }
 
-async fn job_loop(arc_db: Arc<Database>, client: Arc<Client>) {
-    let scrape_duration = if cfg!(debug_assertions) {
-        Duration::from_secs(5)
-    } else {
-        // release code should not be scraping as often as debug
-        Duration::from_secs(20)
-    };
-    let mut interval = tokio::time::interval(scrape_duration);
+async fn job_loop(arc_db: &Arc<Database>, client: &Arc<Client>) {
     let provider_map = get_provider_map(&Arc::clone(&client))
         .await
         .expect("Could not successfully initialize a provider map");
     let running_providers: RwLock<RunningProviders> = RwLock::new(HashSet::default());
-    loop {
-        interval.tick().await;
-        let pending = match pending_scrapes(&arc_db, &running_providers).await {
-            Err(error) => {
-                println!("{:?}", error);
-                continue;
-            }
-            Ok(result) => result,
-        };
-        trace!("pending = {:?}", pending);
-        let scheduled = filter_scheduled(pending);
-        trace!("scheduled = {:?}", scheduled);
-        if scheduled.len() == 0 {
-            trace!("No providers waiting to be staged");
-            continue;
+    let pendings = match pending_scrapes(&arc_db).await {
+        Err(error) => {
+            println!("{:?}", error);
+            return;
         }
+        Ok(result) => result,
+    };
+    println!("{:?}", pendings);
+    return;
+    if let Some(err) = update_priorities(&arc_db, &pendings).await.err() {
+        // should an error here be preventing the scrape?
+        // Could end up spamming a provider if it's stuck at a high value
+        error!("{:?}", err);
+    };
+    // trace!("pending = {:?}", pending);
+    let this_scrape = pendings.iter().map(|p| Arc::new(p)).map(|pending| async {
+        let pp = pending;
+        tokio::time::sleep(pp.scrape_date.clone()).await;
+        // let scheduled = filter_scheduled(&pending);
+        // if scheduled.len() == 0 {
+        //     trace!("No providers waiting to be staged");
+        //     continue;
+        // }
+        // trace!("scheduled = {:?}", scheduled);
         // TODO: this should be happening at the end of the scrape, not start
-        if let Some(err) = update_priorities(&arc_db, &scheduled).await.err() {
-            // should an error here be preventing the scrape?
-            // Could end up spamming a provider if it's stuck at a high value
+        if let Err(err) = mark_as_scheduled(&arc_db, &pp, &running_providers).await {
             error!("{:?}", err);
+            return;
         };
-        if let Err(err) = mark_as_scheduled(&arc_db, &scheduled, &running_providers).await {
+        if let Err(err) = run(Arc::clone(&arc_db), &pp, &provider_map).await {
             error!("{:?}", err);
-            continue;
-        };
-        if let Err(err) = run(Arc::clone(&arc_db), &scheduled, &provider_map).await {
-            error!("{:?}", err);
-            continue;
+            return;
         }
-        debug!(
-            "Finished scraping {} providers",
-            scheduled.providers().len()
-        );
-        for provider in scheduled.providers() {
-            running_providers.write().remove(&provider.provider);
-        }
+        debug!("Finished scraping {}", pp.id);
+        running_providers.write().remove(&pp.provider);
         ()
-    }
+    });
+    join_all(this_scrape).await;
 }
 
 async fn run(
     arc_db: Arc<Database>,
-    pending_providers: &ScheduledProviders,
+    pp: &PendingProvider,
     provider_map: &ProviderMap,
 ) -> Result<(), Box<dyn Error + Send>> {
-    let providers = pending_providers.providers();
-    // let latest = latest_requests(&*arc_db, true).await?;
-    // let pending_providers = pending_scrapes(&*arc_db).await?;
-    debug!("Pending providers = {:?}", providers);
+    // let providers = pending_providers.providers();
+    // // let latest = latest_requests(&*arc_db, true).await?;
+    // // let pending_providers = pending_scrapes(&*arc_db).await?;
+    // debug!("Pending providers = {:?}", providers);
 
     let ctx = &Arc::new(Context {
         db: Arc::clone(&arc_db),
     });
-    let rate_limiter = &Arc::new(global_rate_limiter());
-    let futures = providers.into_iter().map(|sp| async move {
-        info!("Waiting for rate limiter");
-        wait_provider_turn(Arc::clone(rate_limiter)).await;
-        let provider = provider_map.get(&sp.provider.name).expect(&format!(
-            "Tried to get a provider that doesn't exist {}",
-            &sp.provider,
-        ));
-        match iter(Arc::clone(ctx), &sp.clone(), &**provider).await {
-            Err(err) => eprintln!("{:?}", err),
-            Ok(_) => {}
-        }
-        // info!("There are {} concurrent queries", rate_limiter.len())
-    });
-    join_all(futures).await;
+    let provider = provider_map.get(&pp.provider.name).expect(&format!(
+        "Tried to get a provider that doesn't exist {}",
+        &pp.provider,
+    ));
+    match iter(Arc::clone(ctx), &pp, &**provider).await {
+        Err(err) => eprintln!("{:?}", err),
+        Ok(_) => {}
+    }
     Ok(())
 }
 
 async fn setup() -> anyhow::Result<()> {
     let db = Arc::new(connect().await?);
     let client = Arc::new(Client::new());
-    let data = tokio::task::spawn_local(job_loop(Arc::clone(&db), Arc::clone(&client)));
+    info!("Starting JiU");
+    loop {
+        info!("Starting job loop");
+        let d = Arc::clone(&db);
+        let c = Arc::clone(&client);
+        let data = tokio::task::spawn_local(async move {
+            job_loop(&d, &c).await;
+            info!("Requests finished...");
+        });
+        let delay = tokio::task::spawn(tokio::time::sleep(Duration::from_millis(8.64e7 as u64)));
+        if let (_, Err(join_err)) = tokio::join!(delay, data) {
+            println!("{:?}", join_err)
+        }
+        info!("Finished job loop");
+    }
     // if let Err(err) = run_server(Arc::clone(&db)).await {
     //     error!("Error with the webserver");
     //     eprintln!("{:?}", err);
     // };
-    data.await?;
-    Ok(())
 }
 
 #[actix_web::main]
