@@ -22,60 +22,16 @@
       ]
     }
   },
-  "21f5fc03a66d40baa151a48179e913b502583bfddd40d791fcb295d4167f1c42": {
-    "query": "SELECT\n            pr.id,\n            pr.name,\n            pr.destination,\n            s.priority as resource_priority,\n            s.scraped_at,\n            s.priority,\n            (SELECT COUNT(*)\n              FROM media m\n              INNER JOIN scrape_request sr\n                on sr.id = m.scrape_request_id\n              where sr.scrape_id = s.id\n            ) as discovery_count\n        FROM provider_resource pr\n        LEFT JOIN LATERAL (\n            SELECT *\n            FROM scrape s\n            WHERE s.provider_name = pr.name\n              AND s.provider_destination = pr.destination\n            ORDER BY s.scraped_at desc, id\n            LIMIT 10\n        ) s on True\n        WHERE pr.enabled AND pr.id = ANY($1)\n        ORDER BY s.scraped_at desc",
+  "237d83644ae702077ae9035f141b4e78e193a80991a58268cbfb8c6ddaeb9e6e": {
+    "query": "UPDATE provider_resource SET last_queue = NOW() WHERE id = $1",
     "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 1,
-          "name": "name",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 2,
-          "name": "destination",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 3,
-          "name": "resource_priority",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 4,
-          "name": "scraped_at",
-          "type_info": "Timestamp"
-        },
-        {
-          "ordinal": 5,
-          "name": "priority",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 6,
-          "name": "discovery_count",
-          "type_info": "Int8"
-        }
-      ],
+      "columns": [],
       "parameters": {
         "Left": [
-          "Int4Array"
+          "Int4"
         ]
       },
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        true,
-        false,
-        null
-      ]
+      "nullable": []
     }
   },
   "299433bbcf3b5df1fdf1e96cc0bf6c0128ee763636444ada07875180c9533c8b": {
@@ -110,72 +66,6 @@
       },
       "nullable": [
         true,
-        true,
-        true,
-        true
-      ]
-    }
-  },
-  "33bc71a5f13a714f89e58bc61a845ec4c0c5cc452b1ff65d8d1ac7bf52c3231a": {
-    "query": "SELECT * FROM provider_resource pr\n        WHERE pr.enabled AND\n        (pr.last_queue IS NULL OR pr.last_queue + '1.5 hour' < NOW())\n        ORDER BY pr.last_scrape desc nulls first, created_at desc\n        LIMIT 5",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 1,
-          "name": "destination",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 2,
-          "name": "name",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 3,
-          "name": "enabled",
-          "type_info": "Bool"
-        },
-        {
-          "ordinal": 4,
-          "name": "url",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 5,
-          "name": "priority",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 6,
-          "name": "last_scrape",
-          "type_info": "Timestamp"
-        },
-        {
-          "ordinal": 7,
-          "name": "last_queue",
-          "type_info": "Timestamp"
-        },
-        {
-          "ordinal": 8,
-          "name": "created_at",
-          "type_info": "Timestamp"
-        }
-      ],
-      "parameters": {
-        "Left": []
-      },
-      "nullable": [
-        false,
-        false,
-        false,
-        true,
-        false,
-        false,
         true,
         true,
         true
@@ -235,6 +125,62 @@
       ]
     }
   },
+  "8fbc59c5a99b2ac106bbe8d38276b1dbcec5c62068da4b7f458f612618a9b86e": {
+    "query": "SELECT\n            pr.id,\n            pr.name,\n            pr.destination,\n            s.priority as resource_priority,\n            s.scraped_at,\n            s.priority,\n            (SELECT COUNT(*)\n              FROM media m\n              INNER JOIN scrape_request sr\n                on sr.id = m.scrape_request_id\n              where sr.scrape_id = s.id\n            ) as discovery_count\n        FROM provider_resource pr\n        LEFT JOIN LATERAL (\n            SELECT *\n            FROM scrape s\n            WHERE s.provider_name = pr.name\n              AND s.provider_destination = pr.destination\n            ORDER BY s.scraped_at desc, id\n            LIMIT 30\n        ) s on True\n        WHERE pr.enabled AND pr.id = ANY($1)\n        ORDER BY s.scraped_at desc",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 2,
+          "name": "destination",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 3,
+          "name": "resource_priority",
+          "type_info": "Numeric"
+        },
+        {
+          "ordinal": 4,
+          "name": "scraped_at",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 5,
+          "name": "priority",
+          "type_info": "Numeric"
+        },
+        {
+          "ordinal": 6,
+          "name": "discovery_count",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int4Array"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        null
+      ]
+    }
+  },
   "991d7485cf79e8d722409ae0e7ccb2d6c74ee4eb8df27dae784d611be88a4c0f": {
     "query": "UPDATE provider_resource SET priority = $1 where id = $2 returning id",
     "describe": {
@@ -247,25 +193,13 @@
       ],
       "parameters": {
         "Left": [
-          "Int4",
+          "Numeric",
           "Int4"
         ]
       },
       "nullable": [
         false
       ]
-    }
-  },
-  "99e22495966aeaf571d1284b6d8bb43157648ce44bb1f0ae9ef14df967b39642": {
-    "query": "UPDATE provider_resource SET last_queue = NOW() WHERE id = ANY($1)",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": [
-          "Int4Array"
-        ]
-      },
-      "nullable": []
     }
   },
   "9edd53013cf08a340b0bc52fb02a894146bb8cca3a7d58281910f9779e67e9a6": {
@@ -313,6 +247,84 @@
       ]
     }
   },
+  "9f575b008ed35f72113b7e7c9b3db2bb06ceefc9c0a3a97b05aa4f8913f67417": {
+    "query": "SELECT * FROM provider_resource pr\n        WHERE pr.enabled AND pr.tokens >= 1\n        ORDER BY pr.name DESC, pr.destination desc",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "destination",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 2,
+          "name": "name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 3,
+          "name": "enabled",
+          "type_info": "Bool"
+        },
+        {
+          "ordinal": 4,
+          "name": "url",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 5,
+          "name": "priority",
+          "type_info": "Numeric"
+        },
+        {
+          "ordinal": 6,
+          "name": "last_scrape",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 7,
+          "name": "last_queue",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 8,
+          "name": "created_at",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 9,
+          "name": "tokens",
+          "type_info": "Numeric"
+        },
+        {
+          "ordinal": 10,
+          "name": "last_token_update",
+          "type_info": "Timestamp"
+        }
+      ],
+      "parameters": {
+        "Left": []
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true,
+        false,
+        true
+      ]
+    }
+  },
   "ab5492641d9960173e369d2ee9d2644a0e6ebd17ba0fc0d8ed5d375b56419e52": {
     "query": "UPDATE provider_resource SET last_scrape = NOW() WHERE name = $1 AND destination = $2 RETURNING *",
     "describe": {
@@ -345,7 +357,7 @@
         {
           "ordinal": 5,
           "name": "priority",
-          "type_info": "Int4"
+          "type_info": "Numeric"
         },
         {
           "ordinal": 6,
@@ -360,6 +372,16 @@
         {
           "ordinal": 8,
           "name": "created_at",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 9,
+          "name": "tokens",
+          "type_info": "Numeric"
+        },
+        {
+          "ordinal": 10,
+          "name": "last_token_update",
           "type_info": "Timestamp"
         }
       ],
@@ -378,6 +400,8 @@
         false,
         true,
         true,
+        true,
+        false,
         true
       ]
     }
@@ -495,7 +519,7 @@
         "Left": [
           "Text",
           "Text",
-          "Int4"
+          "Numeric"
         ]
       },
       "nullable": [
@@ -512,6 +536,16 @@
           "Int4",
           "Text"
         ]
+      },
+      "nullable": []
+    }
+  },
+  "d70d01badc373a67518ad2213cd3977d39bf0cba06cc1d11387fc0a4ec17e1f2": {
+    "query": "UPDATE provider_resource\n        SET\n            tokens = tokens + priority,\n            last_token_update = NOW()\n        WHERE last_token_update IS NULL OR last_token_update + interval '1 day' <= NOW()",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": []
       },
       "nullable": []
     }

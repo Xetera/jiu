@@ -45,7 +45,6 @@ async fn job_loop(arc_db: &Arc<Database>, client: &Arc<Client>) {
     let provider_map = get_provider_map(&Arc::clone(&client))
         .await
         .expect("Could not successfully initialize a provider map");
-    let running_providers: RwLock<RunningProviders> = RwLock::new(HashSet::default());
     let pendings = match pending_scrapes(&arc_db).await {
         Err(error) => {
             println!("{:?}", error);
@@ -53,34 +52,22 @@ async fn job_loop(arc_db: &Arc<Database>, client: &Arc<Client>) {
         }
         Ok(result) => result,
     };
-    println!("{:?}", pendings);
-    return;
     if let Some(err) = update_priorities(&arc_db, &pendings).await.err() {
         // should an error here be preventing the scrape?
         // Could end up spamming a provider if it's stuck at a high value
         error!("{:?}", err);
     };
+    println!("{:?}", pendings);
+    return;
     // trace!("pending = {:?}", pending);
     let this_scrape = pendings.iter().map(|p| Arc::new(p)).map(|pending| async {
         let pp = pending;
         tokio::time::sleep(pp.scrape_date.clone()).await;
-        // let scheduled = filter_scheduled(&pending);
-        // if scheduled.len() == 0 {
-        //     trace!("No providers waiting to be staged");
-        //     continue;
-        // }
-        // trace!("scheduled = {:?}", scheduled);
-        // TODO: this should be happening at the end of the scrape, not start
-        if let Err(err) = mark_as_scheduled(&arc_db, &pp, &running_providers).await {
-            error!("{:?}", err);
-            return;
-        };
         if let Err(err) = run(Arc::clone(&arc_db), &pp, &provider_map).await {
             error!("{:?}", err);
             return;
         }
         debug!("Finished scraping {}", pp.id);
-        running_providers.write().remove(&pp.provider);
         ()
     });
     join_all(this_scrape).await;

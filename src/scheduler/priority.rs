@@ -5,7 +5,9 @@ use std::{
     time::Duration,
 };
 
-use crate::models::ScrapeHistory;
+use crate::{models::ScrapeHistory, scheduler::MIN_PRIORITY};
+
+use super::MAX_PRIORITY;
 
 #[derive(Debug)]
 pub struct InvalidPriority(f32);
@@ -44,14 +46,7 @@ impl Default for Priority {
     }
 }
 
-// fn priority_weights(target: i32){
-//     (0..).map(|num|)
-// }
-
 const MAX_RESULT_CONTRIBUTION: u32 = 3;
-
-const MIN_PRIORITY: f32 = 0.07;
-const MAX_PRIORITY: f32 = 1.75;
 
 impl Priority {
     /// Decide the next priority based on the the recent scrape history of the
@@ -59,7 +54,12 @@ impl Priority {
     /// This function specifically borrows self as the result is compared with self
     /// to detect change
     pub fn next(&self, history: &[ScrapeHistory]) -> Self {
-        let past_scrape_count = history.len() as u32;
+        let n = history.len() as u32;
+        if n == 0 {
+            return Self {
+                level: BigDecimal::from_f32(1f32).unwrap(),
+            };
+        }
         // let same_priority_scrapes = history
         //     .iter()
         //     // the history could've jumped between 2 priorities within the same ScrapeHistory.
@@ -70,18 +70,32 @@ impl Priority {
         //     .take_while(|history| history.priority.level == self.level)
         //     .collect::<Vec<&ScrapeHistory>>();
         // let past_scrape_counts = same_priority_scrapes.len();
-        let increases = history
-            .into_iter()
-            .enumerate()
-            // .map(|(i, history)| history.result_count.min(MAX_RESULT_CONTRIBUTION) * (past_scrape_count - i as u32))
-            .map(|(i, history)| history.result_count.min(MAX_RESULT_CONTRIBUTION))
-            .sum::<u32>();
+        let raw_weights = (0..n).map(|x| (n - x - 1).pow(2));
+        let sum_raw_weight: u32 = raw_weights.clone().sum();
+        let weights = raw_weights.map(|x| x as f32 / sum_raw_weight as f32);
+        let weight_sum = weights.clone().sum::<f32>();
+        let z = weights.zip(history);
+        let raw_weighted_average: f32 = z
+            .map(|(a, b)| (a * b.result_count.min(MAX_RESULT_CONTRIBUTION) as f32))
+            .sum();
+        let weighted_average: f32 = (raw_weighted_average * weight_sum) / weight_sum as f32;
+        let scaled = weighted_average * (MAX_PRIORITY - MIN_PRIORITY) + MIN_PRIORITY;
+        let level = scaled.clamp(MIN_PRIORITY, MAX_PRIORITY);
+        // let increases = history
+        //     .into_iter()
+        //     .enumerate()
+        //     // .map(|(i, history)| history.result_count.min(MAX_RESULT_CONTRIBUTION) * (past_scrape_count - i as u32))
+        //     .map(|(i, history)| history.result_count.min(MAX_RESULT_CONTRIBUTION))
+        //     .sum::<u32>();
 
-        let level =
-            (increases / past_scrape_count) as f32 * (MAX_PRIORITY - MIN_PRIORITY) + MIN_PRIORITY;
+        // let level =
+        //     (increases / past_scrape_count) as f32 * (MAX_PRIORITY - MIN_PRIORITY) + MIN_PRIORITY;
         Self {
-            level: level.try_into().unwrap(),
+            level: BigDecimal::from_f32(level).unwrap(),
         }
+        // Self {
+        //     level: level.try_into().unwrap(),
+        // }
         // // we want the amount of allowed empty scrapes to scale inversely with level
         // // so faster scrape rates have more leeway before they stop dropping down in levels
         // let expected_empty_scrapes = (((MAX_LEVEL + 1f32) - self.level) * 1.2).floor() as usize;
@@ -100,5 +114,43 @@ impl Priority {
             .try_into()
             // something has gone very wrong if the level is out of bounds
             .expect(&format!("{} is not a valid priority", level))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::NaiveDateTime;
+    use num_traits::FromPrimitive;
+    use sqlx::types::BigDecimal;
+
+    use crate::{
+        models::ScrapeHistory,
+        scheduler::{MAX_PRIORITY, MIN_PRIORITY},
+        scraper::ScopedProvider,
+    };
+
+    use super::Priority;
+
+    #[test]
+    fn priority_check() {
+        let prio = Priority::unchecked_clamp(0f32);
+        let make_hist = |count| ScrapeHistory {
+            date: NaiveDateTime::from_timestamp(0, 0),
+            priority: prio.clone(),
+            provider: ScopedProvider {
+                destination: "".to_owned(),
+                name: crate::scraper::AllProviders::PinterestBoardFeed,
+            },
+            result_count: count,
+        };
+        let hist = make_hist(1);
+        let n = prio.next(&[hist.clone(), hist.clone(), hist.clone(), hist.clone()]);
+        assert_eq!(n.level, BigDecimal::from_f32(MAX_PRIORITY).unwrap());
+
+        let n = prio.next(&(0..15).map(|_| hist.clone()).collect::<Vec<_>>());
+        assert_eq!(n.level, BigDecimal::from_f32(MAX_PRIORITY).unwrap());
+
+        let n = prio.next(&(0..15).map(|_| make_hist(0)).collect::<Vec<_>>());
+        assert_eq!(n.level, BigDecimal::from_f32(MIN_PRIORITY).unwrap())
     }
 }

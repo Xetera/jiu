@@ -253,7 +253,7 @@ pub trait Provider: Sync + Send + RateLimitable {
     /// # Example
     /// Canonical URL: https://weverse.io/dreamcatcher/artist
     /// Result:        Success("14")
-    async fn canonical_url_to_destination(&self, _url: &str) -> CanonicalUrlResolution {
+    async fn canonical_url_to_id(&self, _url: &str) -> CanonicalUrlResolution {
         CanonicalUrlResolution::NotImplemented
     }
 

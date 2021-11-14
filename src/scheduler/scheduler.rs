@@ -1,18 +1,24 @@
+use std::ops::{Add, Div, Sub};
+use std::time::Duration;
+use std::{collections::HashSet, convert::TryInto, hash::Hash, iter::FromIterator, str::FromStr};
+
+use chrono::{DateTime, Utc};
+use futures::StreamExt;
+use itertools::{unfold, Itertools};
+use num_traits::cast::{FromPrimitive, ToPrimitive};
+use parking_lot::RwLock;
+use rand::Rng;
+use sqlx::types::BigDecimal;
+
 use crate::{
     db::Database,
     models::{PendingProvider, ScrapeHistory},
     scheduler::Priority,
     scraper::{AllProviders, ScopedProvider},
 };
-use chrono::{DateTime, Utc};
-use itertools::{unfold, Itertools};
-use num_traits::cast::{FromPrimitive, ToPrimitive};
-use parking_lot::RwLock;
-use rand::Rng;
-use sqlx::types::BigDecimal;
-use std::ops::{Add, Div, Sub};
-use std::time::Duration;
-use std::{collections::HashSet, convert::TryInto, hash::Hash, iter::FromIterator, str::FromStr};
+
+const SCHEDULER_START_MILLISECONDS: u64 = 1000 * 6;
+const SCHEDULER_END_MILLISECONDS: u64 = 1000 * 10; // 8.64e7 as u64;
 
 pub type RunningProviders = HashSet<ScopedProvider>;
 
@@ -68,9 +74,9 @@ pub async fn pending_scrapes(db: &Database) -> anyhow::Result<Vec<PendingProvide
             let dates = interpolate_dates(
                 maximized_endpoints.len(),
                 // We want to give the
-                &Duration::from_millis(1000 * 60),
+                &Duration::from_millis(SCHEDULER_START_MILLISECONDS),
                 // One day
-                &Duration::from_millis(8.64e7 as u64),
+                &Duration::from_millis(SCHEDULER_END_MILLISECONDS),
             );
             maximized_endpoints
                 .iter()
@@ -144,7 +150,7 @@ pub async fn update_priorities(db: &Database, sp: &Vec<PendingProvider>) -> anyh
               where sr.scrape_id = s.id
             ) as discovery_count
         FROM provider_resource pr
-        LEFT JOIN LATERAL (
+        INNER JOIN LATERAL (
             SELECT *
             FROM scrape s
             WHERE s.provider_name = pr.name
@@ -158,6 +164,7 @@ pub async fn update_priorities(db: &Database, sp: &Vec<PendingProvider>) -> anyh
     )
     .fetch_all(db)
     .await?;
+    println!("providers = {:?}", providers);
 
     let groups = providers.iter().group_by(|row| {
         (
@@ -169,7 +176,7 @@ pub async fn update_priorities(db: &Database, sp: &Vec<PendingProvider>) -> anyh
     });
     for ((id, name, destination, resource_priority), rows) in &groups {
         let histories = rows
-            .filter(|row| row.scraped_at.is_some())
+            .filter(|&row| row.scraped_at.is_some())
             .map(|row| ScrapeHistory {
                 date: row.scraped_at.unwrap(),
                 priority: Priority::unchecked_clamp(row.priority.to_f32().unwrap()),
@@ -183,6 +190,8 @@ pub async fn update_priorities(db: &Database, sp: &Vec<PendingProvider>) -> anyh
 
         let provider_priority = Priority::unchecked_clamp(resource_priority.to_f32().unwrap());
         let next_priority = provider_priority.next(&histories[..]);
+        println!("PRIORITY == {:?}", next_priority);
+        continue;
         sqlx::query!(
             "UPDATE provider_resource SET priority = $1 where id = $2 returning id",
             next_priority.level,
@@ -191,6 +200,7 @@ pub async fn update_priorities(db: &Database, sp: &Vec<PendingProvider>) -> anyh
         .fetch_one(db)
         .await?;
     }
+    return Ok(());
     // Update tokens for all resources. This has to be run after priorities are
     // updated
     sqlx::query!(

@@ -14,9 +14,9 @@ use serde::{Deserialize, Serialize};
 use sha1::Sha1;
 
 use crate::{
-    request::{HttpError, parse_successful_response, request_default_headers},
+    request::{parse_successful_response, request_default_headers, HttpError},
     scheduler::UnscopedLimiter,
-    scraper::{ProviderMedia, ProviderResult, providers::ProviderMediaType},
+    scraper::{providers::ProviderMediaType, ProviderMedia, ProviderResult},
 };
 
 use super::*;
@@ -228,7 +228,7 @@ fn url_from_post(artist_id: u32, post_id: u64, photo_id: u64) -> String {
         "https://weverse.io/{}/artist/{}?photoId={}",
         artist_name, post_id, photo_id
     )
-        .to_owned()
+    .to_owned()
 }
 
 const MAX_PAGESIZE: usize = 30;
@@ -238,8 +238,8 @@ const DEFAULT_PAGESIZE: usize = 16;
 #[async_trait]
 impl RateLimitable for WeverseArtistFeed {
     fn quota() -> Quota
-        where
-            Self: Sized,
+    where
+        Self: Sized,
     {
         default_quota()
     }
@@ -253,8 +253,8 @@ impl RateLimitable for WeverseArtistFeed {
 #[async_trait]
 impl Provider for WeverseArtistFeed {
     fn new(input: ProviderInput) -> Self
-        where
-            Self: Sized,
+    where
+        Self: Sized,
     {
         Self {
             credentials: create_credentials(),
@@ -286,6 +286,21 @@ impl Provider for WeverseArtistFeed {
             }
         })
     }
+
+    // async fn canonical_url_to_id(&self, url: &str) -> CanonicalUrlResolution {
+    //     let res = match self.client.get("https://weverse.io").send().await {
+    //         Ok(res) => res,
+    //         Err(err) => {
+    //             println!("{:?}", err);
+    //             return CanonicalUrlResolution::Fail
+    //         }
+    //     };
+    //     let html = match res.text().await {
+    //         Ok(ok) => ok,
+    //         Err(err) => return CanonicalUrlResolution::Fail,
+    //     };
+    //     let regex = Regex::new(r"/(communitiesInfo\s*?=\s*?(\[.*?\]))").unwrap();
+    // }
 
     fn from_provider_destination(
         &self,
@@ -358,7 +373,7 @@ impl Provider for WeverseArtistFeed {
                                 width: photo.org_img_width,
                                 thumbnail_url: photo.thumbnail_img_url.clone(),
                             })
-                                .ok(),
+                            .ok(),
                         }
                     })
                     // not sure why I have to do this here

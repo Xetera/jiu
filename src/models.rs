@@ -36,7 +36,7 @@ pub struct DatabaseWebhookSource {
     pub provider_destination: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ScrapeHistory {
     pub priority: Priority,
     pub provider: ScopedProvider,
