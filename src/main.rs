@@ -63,7 +63,6 @@ async fn job_loop(arc_db: &Arc<Database>, client: &Arc<Client>) {
     let this_scrape = pendings.iter().map(|p| Arc::new(p)).map(|pending| async {
         let pp = pending;
         let sleep_time = pp.scrape_date.clone();
-        trace!("Sleeping for {}s", sleep_time.as_secs());
         tokio::time::sleep(sleep_time).await;
         if let Err(err) = run(Arc::clone(&arc_db), &pp, &provider_map).await {
             error!("{:?}", err);
@@ -109,7 +108,7 @@ async fn setup() -> anyhow::Result<()> {
         let c = Arc::clone(&client);
         let data = tokio::task::spawn_local(async move {
             job_loop(&d, &c).await;
-            info!("Requests finished...");
+            info!("Requests finished for the day...");
         });
         let delay = tokio::task::spawn(tokio::time::sleep(Duration::from_millis(8.64e7 as u64)));
         if let (_, Err(join_err)) = tokio::join!(delay, data) {

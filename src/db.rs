@@ -78,7 +78,12 @@ pub async fn process_scrape<'a>(
     .await?;
     // we don't really care about making sure this is completely correct
     sqlx::query!(
-        "UPDATE provider_resource SET last_scrape = NOW() WHERE name = $1 AND destination = $2 RETURNING *",
+        "UPDATE provider_resource
+        SET
+            last_scrape = NOW(),
+            tokens = tokens - 1
+        WHERE name = $1 AND destination = $2
+        RETURNING *",
         scrape.provider.name.to_string(),
         scrape.provider.destination,
     )

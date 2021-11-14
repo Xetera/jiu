@@ -17,8 +17,11 @@ use crate::{
     scraper::{AllProviders, ScopedProvider},
 };
 
-const SCHEDULER_START_MILLISECONDS: u64 = 1000 * 60;
+const SCHEDULER_START_MILLISECONDS: u64 = 1000 * 30;
 const SCHEDULER_END_MILLISECONDS: u64 = 8.64e7 as u64;
+
+/// We only want to scrape one single endpoint at most 3 times a day
+const MAX_DAILY_SCRAPE_COUNT: i32 = 3;
 
 pub type RunningProviders = HashSet<ScopedProvider>;
 
@@ -50,7 +53,7 @@ pub async fn pending_scrapes(db: &Database) -> anyhow::Result<Vec<PendingProvide
         .into_iter()
         .flat_map(|row| {
             let tokens = row.tokens.to_f32().unwrap().trunc() as i32;
-            (0..tokens)
+            (0..tokens.min(MAX_DAILY_SCRAPE_COUNT))
                 .map(|_| {
                     (
                         row.id,
@@ -162,16 +165,18 @@ pub async fn update_priorities(db: &Database, sp: &Vec<PendingProvider>) -> anyh
     .fetch_all(db)
     .await?;
 
-    let groups = providers.iter().group_by(|row| {
+    let groups = providers.iter().into_group_map_by(|row| {
         (
             row.id,
             row.name.clone(),
             row.destination.clone(),
-            row.resource_priority.clone(),
+            row.priority.clone(),
         )
     });
-    for ((id, name, destination, resource_priority), rows) in &groups {
+
+    for ((id, name, destination, priority), rows) in groups {
         let histories = rows
+            .into_iter()
             .filter(|&row| row.scraped_at.is_some())
             .map(|row| ScrapeHistory {
                 date: row.scraped_at.unwrap(),
@@ -189,9 +194,8 @@ pub async fn update_priorities(db: &Database, sp: &Vec<PendingProvider>) -> anyh
                 "HISTORY == {:?}",
                 histories.iter().map(|a| a.result_count).collect::<Vec<_>>()
             );
-            let provider_priority = Priority::unchecked_clamp(resource_priority.to_f32().unwrap());
+            let provider_priority = Priority::unchecked_clamp(priority.to_f32().unwrap());
             let next_priority = provider_priority.next(&histories[..]);
-            println!("PRIORITY == {:?}", next_priority);
             // continue;
             sqlx::query!(
                 "UPDATE provider_resource SET priority = $1 where id = $2
@@ -207,10 +211,11 @@ pub async fn update_priorities(db: &Database, sp: &Vec<PendingProvider>) -> anyh
     // return Ok(());
     // Update tokens for all resources. This has to be run after priorities are
     // updated
+    // We don't want to give any endpoint more than 4 tokens (in case something goes wrong)
     sqlx::query!(
         "UPDATE provider_resource
         SET
-            tokens = tokens + priority,
+            tokens = LEAST(4, tokens + priority),
             last_token_update = NOW()
         WHERE last_token_update IS NULL OR last_token_update + interval '1 day' <= NOW()"
     )
