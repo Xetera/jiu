@@ -54,59 +54,31 @@ impl Priority {
     /// This function specifically borrows self as the result is compared with self
     /// to detect change
     pub fn next(&self, history: &[ScrapeHistory]) -> Self {
-        let n = history.len() as u32;
-        if n == 0 {
+        if history.is_empty() {
             return Self {
                 level: BigDecimal::from_f32(1f32).unwrap(),
             };
         }
-        // let same_priority_scrapes = history
-        //     .iter()
-        //     // the history could've jumped between 2 priorities within the same ScrapeHistory.
-        //     // We only need the last chain of similar scrapes
-        //     // For example: [A, A, A, B, B, A, A]
-        //     // should result in
-        //     // [A, A, A]
-        //     .take_while(|history| history.priority.level == self.level)
-        //     .collect::<Vec<&ScrapeHistory>>();
-        // let past_scrape_counts = same_priority_scrapes.len();
-        let raw_weights = (0..n).map(|x| (n - x - 1).pow(2));
-        let sum_raw_weight: u32 = raw_weights.clone().sum();
+        let n = history.len() as i32;
+
+        let raw_weights = (0i32..n).map(|x| (x - n - 1).pow(2));
+        let sum_raw_weight: i32 = raw_weights.clone().sum();
         let weights = raw_weights.map(|x| x as f32 / sum_raw_weight as f32);
         let weight_sum = weights.clone().sum::<f32>();
         let z = weights.zip(history);
         let raw_weighted_average: f32 = z
             .map(|(a, b)| (a * b.result_count.min(MAX_RESULT_CONTRIBUTION) as f32))
             .sum();
+
         let weighted_average: f32 = (raw_weighted_average * weight_sum) / weight_sum as f32;
         let scaled = weighted_average * (MAX_PRIORITY - MIN_PRIORITY) + MIN_PRIORITY;
         let level = scaled.clamp(MIN_PRIORITY, MAX_PRIORITY);
-        // let increases = history
-        //     .into_iter()
-        //     .enumerate()
-        //     // .map(|(i, history)| history.result_count.min(MAX_RESULT_CONTRIBUTION) * (past_scrape_count - i as u32))
-        //     .map(|(i, history)| history.result_count.min(MAX_RESULT_CONTRIBUTION))
-        //     .sum::<u32>();
 
-        // let level =
-        //     (increases / past_scrape_count) as f32 * (MAX_PRIORITY - MIN_PRIORITY) + MIN_PRIORITY;
-        Self {
-            level: BigDecimal::from_f32(level).unwrap(),
-        }
-        // Self {
-        //     level: level.try_into().unwrap(),
-        // }
-        // // we want the amount of allowed empty scrapes to scale inversely with level
-        // // so faster scrape rates have more leeway before they stop dropping down in levels
-        // let expected_empty_scrapes = (((MAX_LEVEL + 1f32) - self.level) * 1.2).floor() as usize;
-        // if increases > 0 {
-        //     // Any new result within the same priority level should result in a priority increase
-        //     return Some(PriorityChange::Up);
-        // } else if past_scrape_counts >= expected_empty_scrapes {
-        //     return Some(PriorityChange::Down);
-        // } else {
-        //     None
-        // }
+        // in some strange situations f32 is NaN.
+        // These cases are normally handled at the top of the function but if not... we just default to
+        // the existing thing
+        let level = BigDecimal::from_f32(level).unwrap_or_else(|| self.level.clone());
+        Self { level }
     }
     pub fn unchecked_clamp(level: f32) -> Self {
         level

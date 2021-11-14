@@ -58,16 +58,18 @@ async fn job_loop(arc_db: &Arc<Database>, client: &Arc<Client>) {
         error!("{:?}", err);
     };
     println!("{:?}", pendings);
-    return;
+    // return;
     // trace!("pending = {:?}", pending);
     let this_scrape = pendings.iter().map(|p| Arc::new(p)).map(|pending| async {
         let pp = pending;
-        tokio::time::sleep(pp.scrape_date.clone()).await;
+        let sleep_time = pp.scrape_date.clone();
+        trace!("Sleeping for {}s", sleep_time.as_secs());
+        tokio::time::sleep(sleep_time).await;
         if let Err(err) = run(Arc::clone(&arc_db), &pp, &provider_map).await {
             error!("{:?}", err);
             return;
         }
-        debug!("Finished scraping {}", pp.id);
+        debug!("Finished scraping {}", pp.provider.name.to_string());
         ()
     });
     join_all(this_scrape).await;

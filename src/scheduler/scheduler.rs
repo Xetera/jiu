@@ -17,8 +17,8 @@ use crate::{
     scraper::{AllProviders, ScopedProvider},
 };
 
-const SCHEDULER_START_MILLISECONDS: u64 = 1000 * 6;
-const SCHEDULER_END_MILLISECONDS: u64 = 1000 * 10; // 8.64e7 as u64;
+const SCHEDULER_START_MILLISECONDS: u64 = 1000 * 60;
+const SCHEDULER_END_MILLISECONDS: u64 = 8.64e7 as u64;
 
 pub type RunningProviders = HashSet<ScopedProvider>;
 
@@ -119,11 +119,8 @@ fn interpolate_dates(
     start_duration: &Duration,
     end_duration: &Duration,
 ) -> Vec<Duration> {
-    println!("{:?}, {:?}", start_duration, end_duration);
     let duration = *end_duration - *start_duration;
-    println!("{:?}", duration);
     let initial_gap = duration.checked_div(item_count as u32 + 1).unwrap();
-    println!("{:?}", initial_gap);
     unfold(*start_duration, |duration| {
         let next = duration.add(initial_gap);
         *duration = next;
@@ -164,7 +161,6 @@ pub async fn update_priorities(db: &Database, sp: &Vec<PendingProvider>) -> anyh
     )
     .fetch_all(db)
     .await?;
-    println!("providers = {:?}", providers);
 
     let groups = providers.iter().group_by(|row| {
         (
@@ -188,19 +184,27 @@ pub async fn update_priorities(db: &Database, sp: &Vec<PendingProvider>) -> anyh
             })
             .collect::<Vec<ScrapeHistory>>();
 
-        let provider_priority = Priority::unchecked_clamp(resource_priority.to_f32().unwrap());
-        let next_priority = provider_priority.next(&histories[..]);
-        println!("PRIORITY == {:?}", next_priority);
-        continue;
-        sqlx::query!(
-            "UPDATE provider_resource SET priority = $1 where id = $2 returning id",
-            next_priority.level,
-            id
-        )
-        .fetch_one(db)
-        .await?;
+        if !histories.is_empty() {
+            println!(
+                "HISTORY == {:?}",
+                histories.iter().map(|a| a.result_count).collect::<Vec<_>>()
+            );
+            let provider_priority = Priority::unchecked_clamp(resource_priority.to_f32().unwrap());
+            let next_priority = provider_priority.next(&histories[..]);
+            println!("PRIORITY == {:?}", next_priority);
+            // continue;
+            sqlx::query!(
+                "UPDATE provider_resource SET priority = $1 where id = $2
+             AND last_token_update IS NOT NULL
+             returning id",
+                next_priority.level,
+                id
+            )
+            .fetch_optional(db)
+            .await?;
+        }
     }
-    return Ok(());
+    // return Ok(());
     // Update tokens for all resources. This has to be run after priorities are
     // updated
     sqlx::query!(
@@ -210,7 +214,7 @@ pub async fn update_priorities(db: &Database, sp: &Vec<PendingProvider>) -> anyh
             last_token_update = NOW()
         WHERE last_token_update IS NULL OR last_token_update + interval '1 day' <= NOW()"
     )
-    .fetch_one(db)
+    .fetch_optional(db)
     .await?;
     Ok(())
 }
@@ -274,16 +278,6 @@ mod tests {
             maximize_distance(&vec![1, 1, 1, 2, 2], quality_maxmindist),
             &[1, 2, 1, 2, 1],
         );
-        // this algorithm is so bad I can't even get
-        // anything over a couple element to work lmfaooo consistently
-
-        // assert_eq!(
-        //     maximize_distance(
-        //         &vec![1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 5, 6],
-        //         quality_maxmindist
-        //     ),
-        //     &[1, 2, 3, 1, 4, 5, 1, 2, 6, 3, 1, 4, 2, 1]
-        // );
     }
 
     #[test]
