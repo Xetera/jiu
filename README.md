@@ -8,8 +8,9 @@
 
 ## Jiu
 
-Jiu is a multi-threaded media scraper capable of juggling thousands of endpoints from different providers with unique
-restrictions/requirements.
+Jiu is a multi-threaded media scraper capable of juggling thousands of endpoints from different providers with unique restrictions/requirements.
+
+It is built for the purpose of fetching media posted on different sites the form of a slow, eventual-consistency, and not for instant change detection.
 
 ## Providers
 
@@ -24,19 +25,24 @@ provider.
 * [Weverse.io](https://weverse.io/dreamcatcher/feed)
 * [United Cube](https://www.united-cube.com/)
 
-## Priority
+## Dynamic Priority & Tokens
 
-Priority is the system that determines how frequently an endpoint needs to be queued to be checked again on a scale from
-1 to 10. Priority **1** endpoints are checked once every 2 hours and priority **10** endpoints are checked once a week.
+Dynamic priority is main idea behind how JiU can scrape many resources without getting rate limited.
 
-All new endpoints start with a priority of **5** and move up or down based on how frequently changes are being detected.
-Endpoints that don't yield changes frequently are moved down one level and every detected change moves the endpoint up
-one level.
+Unique endpoints that have more than 1 token are grouped by their provider type and get scheduled to be scraped at even intervals at the start of every day to avoid hammering APIs with requests.
 
-## Rate Limits
+![](./assets/scrape_interval.png)
 
-Each provider has a rate limit shared across the same domain to prevent bans. This can be customized per-provider to
-allow for higher or stricter rate limits or bursts sizes based on what the API allows.
+
+After each successful request, a 30 day sliding window of that endpoint's request history gets graded on a curve that determines how its priority should be changing based on how many new images it found in each request.
+
+![](./assets/scraping_history.png)
+
+Pages that post at least one image regularly get assigned a higher priority, up to a maximum of 3 requests every 2 days. Pages that don't post anything sink down to a scrape schedule of once every 2 weeks.
+
+New results found in earlier dates have a higher contribution to priority than those found further back. This curve allows JiU to match its request frequency with the changing posting schedule of sites it's processing to avoid wasting requests on resources that are rarely updated.
+
+At the end of each day, every endpoint gets tokens added to it equal to its current priority that get checked as a criteria when scheduling requests the next day.
 
 ## Authorization
 
