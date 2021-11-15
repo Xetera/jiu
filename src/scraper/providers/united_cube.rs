@@ -1,19 +1,22 @@
-use super::*;
-use crate::{
-    request::{parse_successful_response, request_default_headers, HttpError},
-    scheduler::UnscopedLimiter,
-    scraper::ProviderCredentials,
-};
+use std::{env, path::Path, sync::Arc, time::Instant};
+
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use log::error;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::{env, path::Path, sync::Arc, time::Instant};
+
+use crate::{
+    request::{parse_successful_response, request_default_headers, HttpError},
+    scheduler::UnscopedLimiter,
+    scraper::ProviderCredentials,
+};
+
+use super::*;
 
 pub struct UnitedCubeArtistFeed {
     pub client: Arc<Client>,
-    pub credentials: SharedCredentials,
+    pub credentials: SharedCredentials<ProviderCredentials>,
     pub rate_limiter: UnscopedLimiter,
 }
 
@@ -75,8 +78,8 @@ enum MediaData {
 
 #[derive(Debug, Deserialize, Clone)]
 struct Post {
-    // slug: String,
-    // content: String,
+    slug: String,
+    content: Option<String>,
     register_datetime: DateTime<Utc>,
     media: Vec<MediaData>,
 }
@@ -175,13 +178,15 @@ impl Provider for UnitedCubeArtistFeed {
         pagination: Option<Pagination>,
     ) -> Result<ScrapeUrl, ProviderFailure> {
         // club_id|board_id
-        let parts = id.split("|").collect::<Vec<&str>>();
+        let page_id = id.to_string();
+        let parts = page_id.split("|").collect::<Vec<_>>();
         let board = parts.get(1).unwrap();
-        let next_url = UrlBuilder::queries(vec![("board", board.to_owned().to_owned())])
-            .page_size("per_page", page_size)
-            .pagination("page", &pagination)
-            .build("https://united-cube.com/v1/posts")?;
-        Ok(ScrapeUrl(next_url.as_str().to_owned()))
+        let mut next_url: UrlBuilder = Default::default();
+        next_url.params.push(("board", board.to_string()));
+        next_url.page_size("per_page", page_size);
+        next_url.pagination("page", &pagination);
+        let url = next_url.build_scrape_url("https://united-cube.com/v1/posts")?;
+        Ok(url)
     }
 
     async fn unfold(&self, state: ProviderState) -> Result<ProviderStep, ProviderFailure> {
@@ -207,69 +212,76 @@ impl Provider for UnitedCubeArtistFeed {
         let cube_url = url::Url::parse(BASE_URL).unwrap();
         let response_json = parse_successful_response::<Page>(response).await?;
 
-        let media = response_json
+        let posts = response_json
             .items
             .into_iter()
-            .flat_map(|post| {
-                post.media
-                    .iter()
-                    .filter_map(|media| {
-                        let (_type, media_url, unique_identifier) = match &media {
-                            // we don't care about posts
-                            MediaData::Post { .. } => return None,
-                            // Every video on ucube is (probably) a link to an external youtube video
-                            // but we can't be sure
-                            MediaData::Video { url, .. } => {
-                                let is_probably_external_link = url.starts_with("http");
-                                if is_probably_external_link {
-                                    return None;
-                                }
-                                // assuming that a non-external link would follow the same pattern as
-                                match extract_url_and_id(url.as_str(), &cube_url) {
-                                    Err(err) => {
-                                        error!("Could not convert a non-external ucube video into a relative path");
-                                        error!("{:?}", err);
+            .map(|post| {
+                ProviderPost {
+                    unique_identifier: post.slug,
+                    // TODO: maybe add page urls to this anyways?
+                    // united-cube doesn't have page-specific links, they all go to
+                    // https://www.united-cube.com/club/qXmD_5exRnmZfkFIwR1cVA/board/cHTUTBaRRpqUWAL2c5nQiw#PostDetail
+                    // which is controlled by JS and can't be linked to
+                    url: None,
+                    // This is HTML but who cares
+                    body: post.content,
+                    post_date: Some(post.register_datetime.naive_utc().clone()),
+                    metadata: None,
+                    images:
+                    post.media
+                        .iter()
+                        .filter_map(|media| {
+                            let (_type, media_url, unique_identifier) = match &media {
+                                // we don't care about posts
+                                MediaData::Post { .. } => return None,
+                                // Every video on ucube is (probably) a link to an external youtube video
+                                // but we can't be sure
+                                MediaData::Video { url, .. } => {
+                                    let is_probably_external_link = url.starts_with("http");
+                                    if is_probably_external_link {
                                         return None;
                                     }
-                                    Ok((url, id)) => {
-                                        (ProviderMediaType::Video, url.as_str().to_owned(), id)
+                                    // assuming that a non-external link would follow the same pattern as
+                                    match extract_url_and_id(url.as_str(), &cube_url) {
+                                        Err(err) => {
+                                            error!("Could not convert a non-external ucube video into a relative path");
+                                            error!("{:?}", err);
+                                            return None;
+                                        }
+                                        Ok((url, id)) => {
+                                            (ProviderMediaType::Video, url.as_str().to_owned(), id)
+                                        }
                                     }
                                 }
-                            }
-                            MediaData::Image { path } => {
-                                match extract_url_and_id(path.as_str(), &cube_url) {
-                                    Err(err) => {
-                                        error!("Could not get relative path from a ucube image {}", path);
-                                        error!("{:?}", err);
-                                        return None
-                                    },
-                                    Ok((url, id)) => {
-                                        (ProviderMediaType::Image, url.as_str().to_owned(), id)
+                                MediaData::Image { path } => {
+                                    match extract_url_and_id(path.as_str(), &cube_url) {
+                                        Err(err) => {
+                                            error!("Could not get relative path from a ucube image {}", path);
+                                            error!("{:?}", err);
+                                            return None;
+                                        }
+                                        Ok((url, id)) => {
+                                            (ProviderMediaType::Image, url.as_str().to_owned(), id)
+                                        }
                                     }
                                 }
-                            }
-                        };
-                        Some(ProviderMedia {
-                            _type,
-                            media_url,
-                            // TODO: maybe add page urls to this anyways?
-                            // united-cube doesn't have page-specific links, they all go to
-                            // https://www.united-cube.com/club/qXmD_5exRnmZfkFIwR1cVA/board/cHTUTBaRRpqUWAL2c5nQiw#PostDetail
-                            // which is controlled by JS and can't be linked to
-                            page_url: None,
-                            // same with reference URL
-                            reference_url: None,
-                            post_date: Some(post.register_datetime.naive_utc().clone()),
-                            provider_metadata: None,
-                            unique_identifier,
+                            };
+                            Some(ProviderMedia {
+                                _type,
+                                media_url,
+                                // same with reference URL
+                                reference_url: None,
+                                metadata: None,
+                                unique_identifier,
+                            })
                         })
-                    })
-                    .collect::<Vec<ProviderMedia>>()
+                        .collect::<Vec<_>>(),
+                }
             })
-            .collect::<Vec<ProviderMedia>>();
+            .collect::<Vec<_>>();
 
         let result = ProviderResult {
-            images: media,
+            posts,
             response_code: status,
             response_delay: elapsed,
         };
@@ -279,7 +291,7 @@ impl Provider for UnitedCubeArtistFeed {
         }
     }
 
-    fn credentials(&self) -> SharedCredentials {
+    fn credentials(&self) -> SharedCredentials<ProviderCredentials> {
         self.credentials.clone()
     }
 

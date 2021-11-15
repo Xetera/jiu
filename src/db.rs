@@ -1,16 +1,18 @@
-use crate::models::{DatabaseWebhook, PendingProvider, ScrapeRequestMedia, ScrapeRequestWithMedia};
-use crate::request::HttpError;
-use crate::scraper::scraper::{Scrape, ScraperStep};
-use crate::scraper::{ProviderFailure, ScopedProvider};
-use crate::webhook::dispatcher::WebhookInteraction;
-use dotenv::dotenv;
-use itertools::Itertools;
-use log::error;
-use sqlx::postgres::PgPoolOptions;
-use sqlx::{Error, Pool, Postgres};
 use std::collections::HashSet;
 use std::env;
 use std::iter::FromIterator;
+
+use dotenv::dotenv;
+use itertools::Itertools;
+use log::error;
+use sqlx::{Error, Pool, Postgres};
+use sqlx::postgres::PgPoolOptions;
+
+use crate::models::{DatabaseWebhook, PendingProvider, ScrapeRequestMedia, ScrapeRequestWithMedia};
+use crate::request::HttpError;
+use crate::scraper::{ProviderFailure, ScopedProvider};
+use crate::scraper::scraper::{Scrape, ScraperStep};
+use crate::webhook::dispatcher::WebhookInteraction;
 
 pub type Database = Pool<Postgres>;
 
@@ -34,9 +36,9 @@ pub async fn latest_media_ids_from_provider(
         provider.name.to_string(),
         provider.destination
     )
-    .map(|e| e.unique_identifier)
-    .fetch_all(db)
-    .await?;
+        .map(|e| e.unique_identifier)
+        .fetch_all(db)
+        .await?;
     Ok(HashSet::from_iter(out.into_iter()))
 }
 
@@ -52,8 +54,8 @@ pub async fn webhooks_for_provider(
         provider_resolvable.destination,
         provider_resolvable.name.to_string()
     )
-    .fetch_all(db)
-    .await?)
+        .fetch_all(db)
+        .await?)
 }
 
 #[derive(Debug)]
@@ -74,8 +76,8 @@ pub async fn process_scrape<'a>(
         scrape.provider.destination,
         pending.priority.level
     )
-    .fetch_one(&mut tx)
-    .await?;
+        .fetch_one(&mut tx)
+        .await?;
     // we don't really care about making sure this is completely correct
     sqlx::query!(
         "UPDATE provider_resource
@@ -87,8 +89,8 @@ pub async fn process_scrape<'a>(
         scrape.provider.name.to_string(),
         scrape.provider.destination,
     )
-    .fetch_one(db)
-    .await?;
+        .fetch_one(db)
+        .await?;
     let scrape_id = out.id;
     let requests = &mut scrape.requests;
     // we specifically need to reverse this list of requests/images
@@ -112,10 +114,14 @@ pub async fn process_scrape<'a>(
                     // pages are 1-indexed
                     (i as i32) + 1
                 ).fetch_one(&mut tx).await?;
-                let mut images = provider_result.images.clone();
-                images.reverse();
-                for media in images.iter() {
-                    sqlx::query!(
+                // we're not persisting post data, but that's ok
+                let mut posts = provider_result.posts.clone();
+                posts.reverse();
+                for post in posts {
+                    let mut images = post.images.clone();
+                    images.reverse();
+                    for media in images.iter() {
+                        sqlx::query!(
                         "INSERT INTO media (
                             provider_name,
                             provider_destination,
@@ -133,14 +139,15 @@ pub async fn process_scrape<'a>(
                         &scrape.provider.destination,
                         scrape_request_row.id,
                         media.media_url,
-                        media.page_url,
+                        post.url,
                         media.reference_url,
                         media.unique_identifier,
-                        media.post_date,
+                        post.post_date,
                         request.date
                     )
-                    .fetch_optional(&mut tx)
-                    .await?;
+                            .fetch_optional(&mut tx)
+                            .await?;
+                    }
                 }
             }
             ScraperStep::Error(ProviderFailure::HttpError(err)) => {
@@ -163,8 +170,8 @@ pub async fn process_scrape<'a>(
                                 scrape_id,
                                 status.as_u16() as i32,
                             )
-                            .fetch_one(&mut tx)
-                            .await?;
+                                .fetch_one(&mut tx)
+                                .await?;
                         } else {
                             error!("Got an unexpected error from a provider that doesn't have a status",);
                             error!("{:?}", err);
@@ -179,8 +186,8 @@ pub async fn process_scrape<'a>(
                             ctx.code.as_u16() as i32,
                             ctx.body,
                         )
-                        .fetch_one(&mut tx)
-                        .await?;
+                            .fetch_one(&mut tx)
+                            .await?;
                     }
                 }
             }
@@ -233,8 +240,8 @@ pub async fn submit_webhook_responses(
                 code.as_u16() as i32,
                 response_time
             )
-            .fetch_one(&mut tx)
-            .await?;
+                .fetch_one(&mut tx)
+                .await?;
         } else {
             println!(
                 "Failed to persist webhook response from {}",
@@ -267,8 +274,8 @@ pub async fn latest_requests(
             ORDER BY sr.scraped_at desc
             LIMIT 50",
     )
-    .fetch_all(db)
-    .await?;
+        .fetch_all(db)
+        .await?;
     let scrape_ids = results
         .iter()
         .unique_by(|rec| rec.scrape_id)
@@ -285,8 +292,8 @@ pub async fn latest_requests(
         where s.id = ANY($1)",
         &scrape_ids
     )
-    .fetch_all(db)
-    .await?;
+        .fetch_all(db)
+        .await?;
 
     let media_map = medias
         .into_iter()

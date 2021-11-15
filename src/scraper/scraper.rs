@@ -5,10 +5,7 @@ use chrono::{NaiveDateTime, Utc};
 use futures::StreamExt;
 use log::{debug, info};
 
-use crate::scraper::{
-    providers::{CredentialRefresh, ProviderErrorHandle},
-    ProviderMedia,
-};
+use crate::scraper::{providers::{CredentialRefresh, ProviderErrorHandle}, ProviderMedia, ProviderPost};
 
 use super::{
     providers::{Provider, ProviderFailure, ProviderState, ProviderStep, ScrapeRequestInput},
@@ -173,23 +170,26 @@ pub async fn scrape<'a>(
                 break;
             }
             InternalScraperStep::Data(page) => {
-                let original_image_count = page.images.len();
-                let images = page
-                    .images
-                    // TODO: remove this clone using Rc?
-                    .clone()
-                    .into_iter()
-                    .take_while(|r| !input.latest_data.contains(&r.unique_identifier))
-                    .collect::<Vec<ProviderMedia>>();
-                let new_image_count = images.len();
-                info!("Found {} new images in {}", images.len(), sp);
+                let total_found_images = page.posts.iter().flat_map(|p| &p.images).collect::<Vec<_>>().len();
+                let mut posts: Vec<ProviderPost> = vec![];
+                // it SHOULDN'T be possible for us to have seen a post and only
+                // have it partially saved... This should be good enough
+                for post in page.posts {
+                    let has_known_image = post.images.iter().any(|image| input.latest_data.contains(&image.unique_identifier));
+                    if has_known_image {
+                        break
+                    }
+                    posts.push(post)
+                }
+                let new_image_count = posts.iter().map(|p| &p.images).len();
+                info!("Found {} new images in {}", posts.len(), sp);
 
                 scrape_requests.push(ScrapeRequest {
                     date,
-                    step: ScraperStep::Data(ProviderResult { images, ..page }),
+                    step: ScraperStep::Data(ProviderResult { posts, ..page }),
                 });
 
-                let has_known_image = new_image_count != original_image_count;
+                let has_known_image = new_image_count > 0;
                 if has_known_image {
                     info!(
                         "[{}] has finished crawling because it's back to the last scraped data point",
@@ -200,7 +200,7 @@ pub async fn scrape<'a>(
                 let pagination_limit = provider.max_pagination();
                 // only looking at pagination limit if there's at least one image
                 // that's been scraped in the past
-                if page.images.len() > 1 && scrape_requests.len() as u16 > pagination_limit {
+                if total_found_images > 1 && scrape_requests.len() as u16 > pagination_limit {
                     info!(
                         "[{}] has reached its pagination limit of {}",
                         sp, pagination_limit

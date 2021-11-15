@@ -1,6 +1,6 @@
-use super::{PageSize, ScrapeUrl};
-use crate::request::HttpError;
-use crate::scheduler::UnscopedLimiter;
+use std::sync::Arc;
+use std::{collections::HashSet, ops::Add, time::Duration};
+
 use async_trait::async_trait;
 use chrono::NaiveDateTime;
 use governor::{Jitter, Quota, RateLimiter};
@@ -10,11 +10,14 @@ use parking_lot::RwLock;
 use reqwest::{Client, StatusCode};
 use serde;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use std::{collections::HashSet, ops::Add, time::Duration};
 use strum_macros;
 use strum_macros::{EnumIter, EnumString};
 use thiserror::Error;
+
+use crate::request::HttpError;
+use crate::scheduler::UnscopedLimiter;
+
+use super::{PageSize, ScrapeUrl};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ProviderMediaType {
@@ -22,7 +25,7 @@ pub enum ProviderMediaType {
     Video,
 }
 
-pub type SharedCredentials = Arc<RwLock<Option<ProviderCredentials>>>;
+pub type SharedCredentials<T> = Arc<RwLock<Option<T>>>;
 
 /// Placeholder for images that may contain more metadata in the future?
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,28 +33,33 @@ pub struct ProviderMedia {
     #[serde(rename = "type")]
     pub _type: ProviderMediaType,
     pub media_url: String,
-    pub page_url: Option<String>,
-    pub post_date: Option<NaiveDateTime>,
     // where the image is coming from
     pub reference_url: Option<String>,
     pub unique_identifier: String,
     /// necessary for some providers like weverse which include additional
     /// metadata that are unique to the provider being scraped
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider_metadata: Option<serde_json::Value>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderPost {
+    pub unique_identifier: String,
+    pub images: Vec<ProviderMedia>,
+    pub body: Option<String>,
+    pub url: Option<String>,
+    pub post_date: Option<NaiveDateTime>,
+    /// necessary for some providers like weverse which include additional
+    /// metadata that are unique to the provider being scraped
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
 }
 
 #[derive(Debug)]
 pub struct ProviderResult {
-    pub images: Vec<ProviderMedia>,
+    pub posts: Vec<ProviderPost>,
     pub response_delay: Duration,
     pub response_code: StatusCode,
-}
-
-impl ProviderResult {
-    pub fn with_images(&self, images: Vec<ProviderMedia>) -> Self {
-        Self { images, ..*self }
-    }
 }
 
 impl Add<ProviderResult> for ProviderResult {
@@ -60,7 +68,7 @@ impl Add<ProviderResult> for ProviderResult {
         ProviderResult {
             response_code: rhs.response_code,
             response_delay: rhs.response_delay,
-            images: [self.images, rhs.images].concat(),
+            posts: [self.posts, rhs.posts].concat(),
         }
     }
 }
@@ -79,8 +87,8 @@ pub enum ProviderFailure {
     Url,
     #[error("Failed to process response from request")]
     HttpError(HttpError),
-    #[error("Failed to process response from request")]
-    Other(HttpError),
+    #[error("{0}")]
+    Other(String),
 }
 
 impl From<reqwest::Error> for ProviderFailure {
@@ -141,6 +149,12 @@ impl Pagination {
     }
 }
 
+impl ToString for Pagination {
+    fn to_string(&self) -> String {
+        self.next_page()
+    }
+}
+
 #[async_trait]
 pub trait RateLimitable {
     /// The available quota for this provider
@@ -188,12 +202,15 @@ pub struct ProviderInput {
     pub client: Arc<Client>,
 }
 
-pub fn create_credentials() -> SharedCredentials {
+pub fn create_credentials<T>() -> Arc<RwLock<Option<T>>> {
     Arc::new(RwLock::new(None))
 }
 
 /// Try to override the shared credentials after logging in one time
-pub async fn attempt_first_login(provider: &dyn Provider, credentials: &SharedCredentials) -> () {
+pub async fn attempt_first_login(
+    provider: &dyn Provider,
+    credentials: &SharedCredentials<ProviderCredentials>,
+) -> () {
     let id = provider.id().to_string();
     info!("Attempting login to {}", &id);
     let login = provider.login().await;
@@ -294,7 +311,7 @@ pub trait Provider: Sync + Send + RateLimitable {
             self.id().to_string()
         )
     }
-    fn credentials(&self) -> SharedCredentials {
+    fn credentials(&self) -> SharedCredentials<ProviderCredentials> {
         panic!(
             "Tried to get credentials for {} which doesn't authorization",
             self.id().to_string()
@@ -317,10 +334,12 @@ pub enum AllProviders {
     WeverseArtistFeed,
     #[strum(serialize = "united_cube.artist_feed")]
     UnitedCubeArtistFeed,
+    #[strum(serialize = "twitter.timeline")]
+    TwitterTimeline,
 }
 
 pub struct UrlBuilder {
-    params: Vec<(&'static str, String)>,
+    pub params: Vec<(&'static str, String)>,
 }
 
 impl Default for UrlBuilder {
@@ -329,9 +348,20 @@ impl Default for UrlBuilder {
     }
 }
 
+impl ToString for UrlBuilder {
+    fn to_string(&self) -> String {
+        todo!()
+    }
+}
+
 impl UrlBuilder {
-    pub fn queries(params: Vec<(&'static str, String)>) -> Self {
-        Self { params }
+    pub fn from_queries(params: Vec<(&'static str, &'static str)>) -> Self {
+        Self {
+            params: params
+                .into_iter()
+                .map(|(key, value)| (key, value.to_owned()))
+                .collect::<Vec<_>>(),
+        }
     }
     pub fn page_size(&mut self, key: &'static str, page_size: PageSize) -> &mut Self {
         self.params.push((key, page_size.0.to_string()));
@@ -347,5 +377,9 @@ impl UrlBuilder {
         Ok(url::Url::parse_with_params(base_url, self.params.iter())
             .ok()
             .ok_or(ProviderFailure::Url)?)
+    }
+    pub fn build_scrape_url(self, base_url: &str) -> Result<ScrapeUrl, ProviderFailure> {
+        let res = self.build(base_url)?;
+        Ok(ScrapeUrl(res.as_str().to_owned()))
     }
 }

@@ -1,5 +1,5 @@
 use std::{cmp::min, sync::RwLock, time::Instant};
-use super::super::scraper::Provider;
+
 use futures::{stream, StreamExt};
 use log::error;
 use reqwest::{Client, Response};
@@ -10,12 +10,13 @@ use crate::{
     request::{HttpError, request_default_headers},
     scraper::{
         AllProviders,
-        ProviderMedia, scraper::{Scrape, ScraperStep},
+        ProviderMedia, ProviderPost, scraper::{Scrape, ScraperStep},
     },
     webhook::{webhook_type, WebhookDestination},
 };
 
 use super::discord::*;
+use super::super::scraper::Provider;
 
 pub struct WebhookDispatch {
     pub webhook: DatabaseWebhook,
@@ -40,7 +41,7 @@ pub struct WebhookProvider {
 pub struct WebhookPayload<'a> {
     pub provider: WebhookProvider,
     // what even
-    pub media: &'a Vec<&'a ProviderMedia>,
+    pub posts: &'a Vec<&'a ProviderPost>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -54,16 +55,17 @@ pub async fn dispatch_webhooks<'a>(
     let client = &Client::new();
     // request results are not guaranteed to be in order
     let mut results: Vec<WebhookInteraction> = vec![];
-    let media = scrape
+    let posts = scrape
         .requests
         .iter()
         .filter_map(|req| match &req.step {
             ScraperStep::Data(data) => Some(data),
             ScraperStep::Error(_) => None,
         })
-        .flat_map(|result| &result.images)
-        .collect::<Vec<&ProviderMedia>>();
-    let discord_media = &media[0..min(media.len(), DISCORD_IMAGE_DISPLAY_LIMIT)];
+        .flat_map(|result| &result.posts)
+        .collect::<Vec<&ProviderPost>>();
+    let image_length =posts.iter().flat_map(|p| &p.images).collect::<Vec<_>>().len();
+    let discord_media = &posts[0..min(image_length, DISCORD_IMAGE_DISPLAY_LIMIT)];
     let ref_cell = RwLock::new(&mut results);
     let iter = |webhook: DatabaseWebhook| async {
         let builder = client
@@ -75,11 +77,11 @@ pub async fn dispatch_webhooks<'a>(
                 builder
                     .json(&WebhookPayload {
                         provider: WebhookProvider {
-                            _type:  scrape.provider.name.clone(),
+                            _type: scrape.provider.name.clone(),
                             id: scrape.provider.destination.clone(),
-                            ephemeral: provider.ephemeral()
+                            ephemeral: provider.ephemeral(),
                         },
-                        media: &media,
+                        posts: &posts,
                         metadata: webhook.metadata.clone(),
                     })
                     .send()

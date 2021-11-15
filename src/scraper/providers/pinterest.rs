@@ -1,15 +1,20 @@
-use super::*;
+use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::time::Duration;
+
+use async_trait::async_trait;
+use chrono::NaiveDateTime;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use url::Url;
+
 use crate::{
     request::{parse_successful_response, request_default_headers},
     scheduler::UnscopedLimiter,
     scraper::providers::ProviderMediaType,
 };
-use async_trait::async_trait;
-use chrono::NaiveDateTime;
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc, time::Instant};
-use url::Url;
+use crate::request::HttpError;
+
+use super::*;
 
 #[derive(Debug, Deserialize)]
 pub struct PinterestImage {
@@ -80,13 +85,14 @@ impl RateLimitable for PinterestBoardFeed {
             .await;
     }
 }
+
 // PinterestBoard ids are made up of 2 pieces, board_url and board_id formatted in this way
 // "board_id|board_url"
 #[async_trait]
 impl Provider for PinterestBoardFeed {
     fn new(input: ProviderInput) -> Self
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         Self {
             client: Arc::clone(&input.client),
@@ -143,28 +149,38 @@ impl Provider for PinterestBoardFeed {
 
         let status = &response.status();
         let response_json = parse_successful_response::<PinterestResponse>(response).await?;
-        let images = response_json
+        let posts = response_json
             .resource_response
             .data
             .iter()
             .filter_map(|pin| {
                 // I imagine every image has an "orig" size but we can't know for sure
-                pin.images.get("orig").map(|elem| ProviderMedia {
-                    _type: ProviderMediaType::Image,
-                    media_url: elem.url.to_owned(),
-                    page_url: Some(format!("https://www.pinterest.com/pin/{}", pin.id)),
-                    // yes, pinterest literally does not tell you when things were
-                    // pinned. It's so stupid
-                    post_date: None,
-                    reference_url: pin.rich_summary.clone().map(|sum| sum.url),
-                    unique_identifier: pin.id.to_owned(),
-                    provider_metadata: None,
+                pin.images.get("orig").map(|elem| {
+                    ProviderPost {
+                        unique_identifier: pin.id.clone(),
+                        url: Some(format!("https://www.pinterest.com/pin/{}", pin.id)),
+                        post_date: None,
+                        // There might be a body here but I don't really care, it's pinterest
+                        body: None,
+                        images: vec![
+                            ProviderMedia {
+                                _type: ProviderMediaType::Image,
+                                media_url: elem.url.to_owned(),
+                                // yes, pinterest literally does not tell you when things were
+                                // pinned. It's so stupid
+                                reference_url: pin.rich_summary.clone().map(|sum| sum.url),
+                                unique_identifier: pin.id.to_owned(),
+                                metadata: None,
+                            }
+                        ],
+                        metadata: None,
+                    }
                 })
             })
-            .collect::<Vec<ProviderMedia>>();
+            .collect::<Vec<_>>();
 
         let result = ProviderResult {
-            images,
+            posts,
             response_code: status.to_owned(),
             response_delay,
         };

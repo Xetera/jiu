@@ -14,9 +14,9 @@ use serde::{Deserialize, Serialize};
 use sha1::Sha1;
 
 use crate::{
-    request::{parse_successful_response, request_default_headers, HttpError},
+    request::{HttpError, parse_successful_response, request_default_headers},
     scheduler::UnscopedLimiter,
-    scraper::{providers::ProviderMediaType, ProviderMedia, ProviderResult},
+    scraper::{ProviderMedia, ProviderResult, providers::ProviderMediaType},
 };
 
 use super::*;
@@ -151,6 +151,7 @@ pub struct WeversePhoto {
 pub struct WeversePost {
     id: u64,
     // community: WeverseCommunity,
+    body: Option<String>,
     community_user: WeverseCommunityUser,
     photos: Option<Vec<WeversePhoto>>,
     created_at: DateTime<Utc>,
@@ -166,9 +167,13 @@ pub struct WeverseCommunityUser {
 }
 
 #[derive(Debug, Serialize)]
-pub struct WeverseMetadata {
+struct PostMetadata {
     author_id: u32,
     author_name: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ImageMetadata {
     height: u32,
     width: u32,
     thumbnail_url: String,
@@ -211,7 +216,7 @@ pub struct WeversePage {
 // #[derive(Clone)]
 pub struct WeverseArtistFeed {
     pub client: Arc<Client>,
-    pub credentials: SharedCredentials,
+    pub credentials: SharedCredentials<ProviderCredentials>,
     pub rate_limiter: UnscopedLimiter,
 }
 
@@ -228,7 +233,7 @@ fn url_from_post(artist_id: u32, post_id: u64, photo_id: u64) -> String {
         "https://weverse.io/{}/artist/{}?photoId={}",
         artist_name, post_id, photo_id
     )
-    .to_owned()
+        .to_owned()
 }
 
 const MAX_PAGESIZE: usize = 30;
@@ -238,8 +243,8 @@ const DEFAULT_PAGESIZE: usize = 16;
 #[async_trait]
 impl RateLimitable for WeverseArtistFeed {
     fn quota() -> Quota
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         default_quota()
     }
@@ -253,8 +258,8 @@ impl RateLimitable for WeverseArtistFeed {
 #[async_trait]
 impl Provider for WeverseArtistFeed {
     fn new(input: ProviderInput) -> Self
-    where
-        Self: Sized,
+        where
+            Self: Sized,
     {
         Self {
             credentials: create_credentials(),
@@ -308,14 +313,14 @@ impl Provider for WeverseArtistFeed {
         page_size: PageSize,
         pagination: Option<Pagination>,
     ) -> Result<ScrapeUrl, ProviderFailure> {
-        let next_url = UrlBuilder::default()
-            .page_size("pageSize", page_size)
-            .pagination("from", &pagination)
-            .build(&format!(
-                "https://weversewebapi.weverse.io/wapi/v1/communities/{}/posts/artistTab",
-                id
-            ))?;
-        Ok(ScrapeUrl(next_url.as_str().to_owned()))
+        let mut next_url = UrlBuilder::default();
+        next_url.page_size("pageSize", page_size);
+        next_url.pagination("from", &pagination);
+        let url = next_url.build_scrape_url(&format!(
+            "https://weversewebapi.weverse.io/wapi/v1/communities/{}/posts/artistTab",
+            id
+        ))?;
+        Ok(url)
     }
 
     fn max_pagination(&self) -> u16 {
@@ -341,12 +346,12 @@ impl Provider for WeverseArtistFeed {
             .await?;
 
         let response_code = response.status();
-        let response_json = parse_successful_response::<WeversePage>(response).await?;
         let response_delay = instant.elapsed();
-        let images = response_json
+        let response_json = parse_successful_response::<WeversePage>(response).await?;
+        let posts = response_json
             .posts
             .into_iter()
-            .flat_map(|post| {
+            .map(|post| {
                 let community_id = post.community_user.community_id.to_owned();
                 let post_id = post.id;
                 let user = post.community_user;
@@ -354,35 +359,40 @@ impl Provider for WeverseArtistFeed {
                 let author_id = user.artist_id;
                 let post_created_at = post.created_at;
                 let photos = post.photos.unwrap_or(vec![]);
-                photos
-                    .into_iter()
-                    .map(|photo| {
-                        let page_url = url_from_post(community_id, post_id, photo.id);
-                        ProviderMedia {
-                            // should be unique across all of weverse
-                            _type: ProviderMediaType::Image,
-                            unique_identifier: photo.id.to_string(),
-                            post_date: Some(post_created_at.naive_utc()),
-                            media_url: photo.org_img_url.clone(),
-                            page_url: Some(page_url.clone()),
-                            reference_url: Some(page_url.clone()),
-                            provider_metadata: serde_json::to_value(WeverseMetadata {
-                                author_id,
-                                author_name: author_name.clone(),
-                                height: photo.org_img_height,
-                                width: photo.org_img_width,
-                                thumbnail_url: photo.thumbnail_img_url.clone(),
-                            })
-                            .ok(),
-                        }
-                    })
-                    // not sure why I have to do this here
-                    .collect::<Vec<ProviderMedia>>()
+                let page_url = photos.get(0).map(|photo| url_from_post(community_id, post_id, photo.id));
+                ProviderPost {
+                    unique_identifier: post_id.to_string(),
+                    metadata: serde_json::to_value(PostMetadata {
+                        author_id,
+                        author_name: author_name.clone(),
+                    }).ok(),
+                    body: post.body,
+                    url: page_url,
+                    post_date: Some(post_created_at.naive_utc()),
+                    images: photos
+                        .into_iter()
+                        .map(|photo| {
+                            ProviderMedia {
+                                // should be unique across all of weverse
+                                _type: ProviderMediaType::Image,
+                                unique_identifier: photo.id.to_string(),
+                                media_url: photo.org_img_url.clone(),
+                                reference_url: Some(url_from_post(community_id, post_id, photo.id)),
+                                metadata: serde_json::to_value(ImageMetadata {
+                                    height: photo.org_img_height,
+                                    width: photo.org_img_width,
+                                    thumbnail_url: photo.thumbnail_img_url.clone(),
+                                }).ok(),
+                            }
+                        })
+                        // not sure why I have to do this here
+                        .collect::<Vec<_>>(),
+                }
             })
-            .collect::<Vec<ProviderMedia>>();
+            .collect::<Vec<_>>();
         let has_more = !response_json.is_ended;
         let result = ProviderResult {
-            images,
+            posts,
             response_code,
             response_delay,
         };
@@ -444,7 +454,7 @@ impl Provider for WeverseArtistFeed {
             .expect("Tried to authorize weverse module but the login credentials were not found");
         Ok(credentials)
     }
-    fn credentials(&self) -> SharedCredentials {
+    fn credentials(&self) -> SharedCredentials<ProviderCredentials> {
         self.credentials.clone()
     }
 }

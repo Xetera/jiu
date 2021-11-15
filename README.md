@@ -21,6 +21,7 @@ provider.
 
 ### Supported providers
 
+* [Twitter](https://twitter.com/RBW_MAMAMOO)
 * [Pinterest Boards](https://www.pinterest.com/janairaoliveira314/handong)
 * [Weverse.io](https://weverse.io/dreamcatcher/feed)
 * [United Cube](https://www.united-cube.com/)

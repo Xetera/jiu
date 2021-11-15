@@ -1,18 +1,24 @@
-pub mod pinterest;
-use futures::future::join_all;
-pub use pinterest::*;
-mod providers;
-pub use providers::*;
-pub mod weverse;
-pub use weverse::*;
-pub mod united_cube;
-use reqwest::Client;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::iter::FromIterator;
 use std::sync::Arc;
+
+use futures::future::join_all;
+use reqwest::Client;
 use strum::IntoEnumIterator;
+
+pub use pinterest::*;
+pub use providers::*;
+pub use twitter::*;
 pub use united_cube::*;
+pub use weverse::*;
+
+pub mod pinterest;
+pub mod twitter;
+mod providers;
+pub mod weverse;
+mod twitter_types;
+pub mod united_cube;
 
 /// A scrape url is only transparently available to providers
 #[derive(Debug, Clone)]
@@ -27,7 +33,7 @@ pub struct PageSize(usize);
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct ScopedProvider {
     pub name: AllProviders,
-    pub destination: String
+    pub destination: String,
 }
 
 impl Display for ScopedProvider {
@@ -46,6 +52,7 @@ pub async fn get_provider_map(client: &Arc<Client>) -> anyhow::Result<ProviderMa
             AllProviders::PinterestBoardFeed => Box::new(PinterestBoardFeed::new(input)),
             AllProviders::WeverseArtistFeed => Box::new(WeverseArtistFeed::new(input)),
             AllProviders::UnitedCubeArtistFeed => Box::new(UnitedCubeArtistFeed::new(input)),
+            AllProviders::TwitterTimeline => Box::new(TwitterTimeline::new(input)),
         };
         provider.initialize().await;
         (provider_type, provider)

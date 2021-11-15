@@ -1,4 +1,4 @@
-use crate::scraper::ProviderMedia;
+use crate::scraper::{ProviderMedia, ProviderPost};
 use reqwest::Url;
 use serde::Serialize;
 use std::iter::Iterator;
@@ -30,9 +30,10 @@ pub fn add_wait_parameter(url: &str) -> Result<Url, url::ParseError> {
 
 pub const DISCORD_IMAGE_DISPLAY_LIMIT: usize = 8;
 
-pub fn discord_payload<'a>(media: Vec<&ProviderMedia>) -> DiscordPayload<'a> {
+pub fn discord_payload<'a>(media: Vec<&ProviderPost>) -> DiscordPayload<'a> {
     let media_links = media
-        .iter()
+        .into_iter()
+        .flat_map(|p| &p.images)
         .map(|embed| embed.media_url.clone())
         .collect::<Vec<String>>()
         .join("\n");
