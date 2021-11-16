@@ -17,8 +17,8 @@ use crate::{
     scraper::{AllProviders, ScopedProvider},
 };
 
-const SCHEDULER_START_MILLISECONDS: u64 = 1000 * 3;
-const SCHEDULER_END_MILLISECONDS: u64 = 1000 * 10; //  8.64e7 as u64;
+const SCHEDULER_START_MILLISECONDS: u64 = 1000 * 30; // 1000 * 3;
+const SCHEDULER_END_MILLISECONDS: u64 = 8.64e7 as u64; // 1000 * 10; //
 
 /// We only want to scrape one single endpoint at most 3 times a day
 const MAX_DAILY_SCRAPE_COUNT: i32 = 3;
