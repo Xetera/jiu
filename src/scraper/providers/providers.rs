@@ -181,7 +181,6 @@ pub fn default_quota() -> Quota {
     // fairly aggressive quota
     Quota::with_period(Duration::from_millis(3500u64))
         .unwrap()
-        .allow_burst(nonzero!(4u32))
 }
 
 pub fn default_jitter() -> Jitter {
