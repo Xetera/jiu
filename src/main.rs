@@ -2,6 +2,7 @@ use std::{collections::HashSet, error::Error, sync::Arc, time::Duration};
 
 use actix_web;
 use futures::future::join_all;
+use itertools::Itertools;
 use log::{debug, error, info, trace};
 use parking_lot::RwLock;
 use reqwest::Client;
@@ -15,6 +16,7 @@ use jiu::{
     webhook::dispatcher::dispatch_webhooks,
 };
 use tokio::join;
+use jiu::scraper::twitter_types::Twitter;
 
 struct Context {
     db: Arc<Pool<Postgres>>,
@@ -34,10 +36,16 @@ async fn iter(
     let mut result = scrape(&sp, &*provider, &step).await?;
 
     let webhooks = webhooks_for_provider(&ctx.db, &sp).await?;
-    let webhook_interactions = dispatch_webhooks(&*provider, &result, webhooks).await;
+    let webhook_interactions = if !result.requests.is_empty() {
+        Some(dispatch_webhooks(&*provider, &result, webhooks).await)
+    } else {
+        None
+    };
     // process scraping MUST come after webhook dispatching since it mutates the array by reversing it
     let processed_scrape = process_scrape(&ctx.db, &mut result, &pending).await?;
-    submit_webhook_responses(&ctx.db, processed_scrape, webhook_interactions).await?;
+    if webhook_interactions.is_some() {
+        submit_webhook_responses(&ctx.db, processed_scrape, webhook_interactions.unwrap()).await?
+    }
     Ok(())
 }
 

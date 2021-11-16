@@ -17,8 +17,8 @@ use crate::{
     scraper::{AllProviders, ScopedProvider},
 };
 
-const SCHEDULER_START_MILLISECONDS: u64 = 1000 * 30;
-const SCHEDULER_END_MILLISECONDS: u64 = 8.64e7 as u64;
+const SCHEDULER_START_MILLISECONDS: u64 = 1000 * 3;
+const SCHEDULER_END_MILLISECONDS: u64 = 1000 * 10; //  8.64e7 as u64;
 
 /// We only want to scrape one single endpoint at most 3 times a day
 const MAX_DAILY_SCRAPE_COUNT: i32 = 3;
@@ -217,7 +217,7 @@ pub async fn update_priorities(db: &Database, sp: &Vec<PendingProvider>) -> anyh
         SET
             tokens = LEAST(4, tokens + priority),
             last_token_update = NOW()
-        WHERE last_token_update IS NULL OR last_token_update + interval '1 day' <= NOW()"
+        WHERE enabled = True AND (last_token_update IS NULL OR last_token_update + interval '1 day' <= NOW())"
     )
     .fetch_optional(db)
     .await?;

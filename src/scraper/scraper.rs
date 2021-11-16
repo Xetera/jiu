@@ -5,11 +5,11 @@ use chrono::{NaiveDateTime, Utc};
 use futures::StreamExt;
 use log::{debug, info};
 
-use crate::scraper::{providers::{CredentialRefresh, ProviderErrorHandle}, ProviderMedia, ProviderPost};
+use crate::scraper::{ProviderMedia, ProviderPost, providers::{CredentialRefresh, ProviderErrorHandle}};
 
 use super::{
-    providers::{Provider, ProviderFailure, ProviderState, ProviderStep, ScrapeRequestInput},
-    ProviderCredentials, ProviderResult, ScopedProvider,
+    ProviderCredentials,
+    ProviderResult, providers::{Provider, ProviderFailure, ProviderState, ProviderStep, ScrapeRequestInput}, ScopedProvider,
 };
 
 #[derive(Debug)]
@@ -152,7 +152,7 @@ pub async fn scrape<'a>(
         info!("Scraping URL: {:?}", state.url.0);
         Some(request_page(sp, provider, &state, input).await)
     })
-    .boxed_local();
+        .boxed_local();
 
     let mut scrape_requests: Vec<ScrapeRequest> = vec![];
     let scrape_start = Instant::now();
@@ -177,7 +177,7 @@ pub async fn scrape<'a>(
                 for post in page.posts {
                     let has_known_image = post.images.iter().any(|image| input.latest_data.contains(&image.unique_identifier));
                     if has_known_image {
-                        break
+                        break;
                     }
                     posts.push(post)
                 }

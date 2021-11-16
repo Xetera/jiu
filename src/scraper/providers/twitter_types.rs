@@ -12,6 +12,7 @@
 // }
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use serde::de::IgnoredAny;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TwitterPostMetadata {
@@ -255,39 +256,34 @@ pub struct SelfThread {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct User {
     pub(crate) id_str: String,
-    pub(crate) name: String,
-    pub(crate) screen_name: String,
-    pub(crate) location: String,
-    pub(crate) description: String,
-    pub(crate) url: Option<String>,
-    pub(crate) entities: UserEntities,
-    pub(crate) followers_count: i64,
-    pub(crate) fast_followers_count: i64,
-    pub(crate) normal_followers_count: i64,
-    pub(crate) friends_count: i64,
-    pub(crate) listed_count: i64,
-    pub(crate) created_at: String,
-    pub(crate) favourites_count: i64,
-    pub(crate) geo_enabled: Option<bool>,
-    pub(crate) statuses_count: i64,
-    pub(crate) media_count: i64,
-    pub(crate) profile_image_url_https: String,
-    pub(crate) profile_banner_url: Option<String>,
-    pub(crate) profile_image_extensions: ProfileExtensions,
-    pub(crate) profile_banner_extensions: Option<ProfileExtensions>,
-    pub(crate) profile_link_color: String,
-    pub(crate) pinned_tweet_ids: Vec<f64>,
-    pub(crate) pinned_tweet_ids_str: Vec<String>,
-    pub(crate) has_custom_timelines: Option<bool>,
-    pub(crate) advertiser_account_type: AdvertiserAccountType,
-    pub(crate) advertiser_account_service_levels: Vec<AdvertiserAccountServiceLevel>,
-    pub(crate) profile_interstitial_type: String,
-    pub(crate) business_profile_state: AdvertiserAccountType,
-    pub(crate) translator_type: TranslatorType,
-    pub(crate) withheld_in_countries: Vec<Option<serde_json::Value>>,
-    pub(crate) has_extended_profile: Option<bool>,
-    pub(crate) default_profile: Option<bool>,
-    pub(crate) verified: Option<bool>,
+    // pub(crate) name: String,
+    // pub(crate) screen_name: String,
+    // pub(crate) location: String,
+    // pub(crate) description: String,
+    // pub(crate) url: Option<String>,
+    // pub(crate) entities: UserEntities,
+    // pub(crate) followers_count: i64,
+    // pub(crate) fast_followers_count: i64,
+    // pub(crate) normal_followers_count: i64,
+    // pub(crate) friends_count: i64,
+    // pub(crate) listed_count: i64,
+    // pub(crate) created_at: String,
+    // pub(crate) favourites_count: i64,
+    // pub(crate) geo_enabled: Option<bool>,
+    // pub(crate) statuses_count: i64,
+    // pub(crate) media_count: i64,
+    // pub(crate) profile_image_url_https: String,
+    // pub(crate) profile_banner_url: Option<String>,
+    // pub(crate) profile_image_extensions: ProfileExtensions,
+    // pub(crate) profile_banner_extensions: Option<ProfileExtensions>,
+    // pub(crate) profile_link_color: String,
+    // pub(crate) pinned_tweet_ids: Vec<f64>,
+    // pub(crate) pinned_tweet_ids_str: Vec<String>,
+    // pub(crate) has_custom_timelines: Option<bool>,
+    // pub(crate) profile_interstitial_type: String,
+    // pub(crate) has_extended_profile: Option<bool>,
+    // pub(crate) default_profile: Option<bool>,
+    // pub(crate) verified: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -326,14 +322,15 @@ pub struct MediaStatsRClass {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Timeline {
     pub(crate) id: String,
-    pub(crate) instructions: Vec<HashMap<String, AddEntries>>,
-    #[serde(rename = "responseObjects")]
-    pub(crate) response_objects: ResponseObjects,
+    pub(crate) instructions: Vec<HashMap<String, Entries>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum Instruction {
-    AddEntries(AddEntries),
+#[serde(untagged)]
+pub enum Entries {
+    #[serde(rename="addEntries")]
+    AddEntries { entries: Vec<Entry> },
+    Other(serde_json::Value),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -496,26 +493,6 @@ pub struct Metadata {
 pub struct GridCarouselMetadata {
     #[serde(rename = "numRows")]
     pub(crate) num_rows: i64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ResponseObjects {
-    #[serde(rename = "feedbackActions")]
-    pub(crate) feedback_actions: HashMap<String, FeedbackAction>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FeedbackAction {
-    #[serde(rename = "feedbackType")]
-    pub(crate) feedback_type: FeedbackType,
-    #[serde(rename = "feedbackUrl")]
-    pub(crate) feedback_url: String,
-    #[serde(rename = "hasUndoAction")]
-    pub(crate) has_undo_action: bool,
-    #[serde(rename = "richBehavior")]
-    pub(crate) rich_behavior: RichBehavior,
-    #[serde(rename = "encodedFeedbackRequest")]
-    pub(crate) encoded_feedback_request: EncodedFeedbackRequest,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

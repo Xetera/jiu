@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::request::{HttpError, parse_successful_response};
 use crate::scheduler::UnscopedLimiter;
-use crate::scraper::providers::twitter_types::{Twitter, TwitterImageMetadata, TwitterPostMetadata, Type};
+use crate::scraper::providers::twitter_types::{Entries, Twitter, TwitterImageMetadata, TwitterPostMetadata, Type};
 
 use super::*;
 
@@ -32,14 +32,14 @@ fn replace_twitter_string(s: &str) -> String {
 }
 
 pub struct TwitterTimeline {
-    pub guest_token: SharedCredentials<String>,
+    pub guest_token: SharedCredentials<ProviderCredentials>,
     pub client: Arc<Client>,
     pub rate_limiter: UnscopedLimiter,
 }
 
 const BASE_URL: &'static str = "https://twitter.com/";
 /// I have no idea where this token is coming from...
-const MAGIC_BEARER_TOKEN: &'static str = "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA";
+const MAGIC_BEARER_TOKEN: &'static str = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA";
 
 const USER_AGENT: &'static str = "HTC Mozilla/5.0 (Linux; Android 7.0; HTC 10 Build/NRD90M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.83 Mobile Safari/537.36";
 
@@ -73,6 +73,11 @@ impl Provider for TwitterTimeline {
             rate_limiter: Self::rate_limiter(),
         }
     }
+
+    async fn initialize(&self) -> () {
+        attempt_first_login(self, &self.guest_token).await;
+    }
+
     fn next_page_size(&self, last_scraped: Option<NaiveDateTime>, iteration: usize) -> PageSize {
         PageSize(if iteration > 1 {
             100
@@ -89,27 +94,27 @@ impl Provider for TwitterTimeline {
         let mut url_fragment = UrlBuilder::from_queries(vec![
             ("include_profile_interstitial_type", "1"),
             // https://github.com/twintproject/twint/blob/master/twint/url.py
-            ("include_blocking", "1"),
-            ("include_blocked_by", "1"),
-            ("include_followed_by", "1"),
-            ("include_want_retweets", "1"),
-            ("include_mute_edge", "1"),
-            ("include_can_dm", "1"),
-            ("include_can_media_tag", "1"),
-            ("skip_status", "1"),
-            ("cards_platform", "Web - 12"),
-            ("include_cards", "1"),
-            ("include_ext_alt_text", "true"),
-            ("include_quote_count", "true"),
-            ("include_reply_count", "1"),
+            // ("include_blocking", "1"),
+            // ("include_blocked_by", "1"),
+            // ("include_followed_by", "1"),
+            // ("include_want_retweets", "1"),
+            // ("include_mute_edge", "1"),
+            // ("include_can_dm", "1"),
+            // ("include_can_media_tag", "1"),
+            // ("skip_status", "1"),
+            // ("cards_platform", "Web - 12"),
+            // ("include_cards", "1"),
+            // ("include_ext_alt_text", "true"),
+            // ("include_quote_count", "true"),
+            // ("include_reply_count", "1"),
             ("tweet_mode", "extended"),
             ("include_entities", "true"),
-            ("include_user_entities", "true"),
-            ("include_ext_media_color", "true"),
-            ("include_ext_media_availability", "true"),
-            ("send_error_codes", "true"),
-            ("simple_quoted_tweet", "true"),
-            ("include_tweet_replies", "true"),
+            // ("include_user_entities", "true"),
+            // ("include_ext_media_color", "true"),
+            // ("include_ext_media_availability", "true"),
+            // ("send_error_codes", "true"),
+            // ("simple_quoted_tweet", "true"),
+            // ("include_tweet_replies", "true"),
             ("ext", "mediaStats%2ChighlightedLabel")]
         );
         url_fragment.page_size("count", page_size);
@@ -132,7 +137,7 @@ impl Provider for TwitterTimeline {
             None => return Ok(ProviderStep::NotInitialized),
         };
         let instant = Instant::now();
-        let response = self.client.get(BASE_URL).headers(
+        let response = self.client.get(state.url.0).headers(
             HeaderMap::from_iter([(
                 HeaderName::from_static("user-agent"),
                 //죄송합니다
@@ -142,22 +147,25 @@ impl Provider for TwitterTimeline {
                 HeaderValue::from_static(MAGIC_BEARER_TOKEN)
             ), (
                 HeaderName::from_static("x-guest-token"),
-                HeaderValue::from_str(&token).unwrap()
+                HeaderValue::from_str(&token.access_token).unwrap()
             )]))
             .send()
             .await?;
-        let status_code = response.status();
+        let response_code = response.status();
         let response_delay = instant.elapsed();
         let response_json = parse_successful_response::<Twitter>(response).await?;
         // Twitter does some really interesting stuff with how they present API data
         let maybe_instruction = response_json.timeline.instructions.iter().find_map(|instruction| instruction.get("addEntries"));
         let tweet_db = response_json.global_objects.tweets;
-        let instruction = match maybe_instruction {
-            Some(instruction) => instruction,
-            None => return Err(ProviderFailure::Other("Could not find an 'addEntries' in instructions".to_owned())),
+        let entries = match maybe_instruction {
+            Some(Entries::AddEntries { entries }) => entries,
+            _ => return Err(ProviderFailure::Other("Could not find an 'addEntries' in instructions".to_owned())),
         };
-        let tweets = instruction.entries.iter().filter_map(|entry| {
+        let posts = entries.iter().filter_map(|entry| {
             let sort_index = &entry.sort_index;
+            if !entry.entry_id.starts_with("tweet-") {
+                return None;
+            }
             // a sort index corresponds to the id of the
             // the chances of this being undefined is basically non-existent but we should be safe
             let tweet = match tweet_db.get(sort_index) {
@@ -203,9 +211,22 @@ impl Provider for TwitterTimeline {
                 }
             })
         }).collect::<Vec<_>>();
+        println!("{:?}", posts);
 
-
-        todo!()
+        let cursor_entry = &entries.last();
+        let cursor = cursor_entry.and_then(|c| c.content.operation.as_ref().map(|o| o.cursor.value.clone()));
+        let result = ProviderResult {
+            posts,
+            response_code,
+            response_delay,
+        };
+        match cursor {
+            Some(cursor) => Ok(ProviderStep::Next(
+                result,
+                Pagination::NextCursor(cursor),
+            )),
+            None => Ok(ProviderStep::End(result))
+        }
     }
 
     async fn login(&self) -> anyhow::Result<ProviderCredentials> {
@@ -213,10 +234,15 @@ impl Provider for TwitterTimeline {
             .headers(HeaderMap::from_iter([(HeaderName::from_static("user-agent"), HeaderValue::from_static(USER_AGENT))]))
             .send()
             .await?;
+        println!("SUCCESSFULLY SENT REQUEST");
         let html = login.text().await?;
-        let regex = Regex::new(r#"gt=(.*);"#).unwrap();
+        println!("SUCCESSFULLY SCRAPED HTML");
+        let regex = Regex::new(r#"gt=(.*?);"#).unwrap();
+        println!("SUCCESSFULLY CREATED HTML");
         let captures = regex.captures(&html).unwrap();
+        println!("SUCCESSFULLY CAPTURED ALL");
         let capture = captures.get(1).expect("Couldn't match a guest token in the twitter homepage, the site was changed");
+        println!("SUCCESSFULLY CAPTURED {}", capture.as_str());
         Ok(ProviderCredentials {
             access_token: capture.as_str().to_owned(),
             refresh_token: "".to_owned(),

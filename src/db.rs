@@ -5,13 +5,13 @@ use std::iter::FromIterator;
 use dotenv::dotenv;
 use itertools::Itertools;
 use log::error;
-use sqlx::{Error, Pool, Postgres};
 use sqlx::postgres::PgPoolOptions;
+use sqlx::{Error, Pool, Postgres};
 
 use crate::models::{DatabaseWebhook, PendingProvider, ScrapeRequestMedia, ScrapeRequestWithMedia};
 use crate::request::HttpError;
-use crate::scraper::{ProviderFailure, ScopedProvider};
 use crate::scraper::scraper::{Scrape, ScraperStep};
+use crate::scraper::{ProviderFailure, ScopedProvider};
 use crate::webhook::dispatcher::WebhookInteraction;
 
 pub type Database = Pool<Postgres>;
@@ -36,9 +36,9 @@ pub async fn latest_media_ids_from_provider(
         provider.name.to_string(),
         provider.destination
     )
-        .map(|e| e.unique_identifier)
-        .fetch_all(db)
-        .await?;
+    .map(|e| e.unique_identifier)
+    .fetch_all(db)
+    .await?;
     Ok(HashSet::from_iter(out.into_iter()))
 }
 
@@ -54,8 +54,8 @@ pub async fn webhooks_for_provider(
         provider_resolvable.destination,
         provider_resolvable.name.to_string()
     )
-        .fetch_all(db)
-        .await?)
+    .fetch_all(db)
+    .await?)
 }
 
 #[derive(Debug)]
@@ -89,8 +89,8 @@ pub async fn process_scrape<'a>(
         scrape.provider.name.to_string(),
         scrape.provider.destination,
     )
-        .fetch_one(db)
-        .await?;
+    .fetch_one(db)
+    .await?;
     let scrape_id = out.id;
     let requests = &mut scrape.requests;
     // we specifically need to reverse this list of requests/images
@@ -122,7 +122,7 @@ pub async fn process_scrape<'a>(
                     images.reverse();
                     for media in images.iter() {
                         sqlx::query!(
-                        "INSERT INTO media (
+                            "INSERT INTO media (
                             provider_name,
                             provider_destination,
                             scrape_request_id,
@@ -134,24 +134,24 @@ pub async fn process_scrape<'a>(
                             discovered_at
                         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                         ON CONFLICT (image_url) DO update set discovered_at = NOW() returning *",
-                        // sometimes we end up re-scraping the latest known images
-                        &scrape.provider.name.to_string(),
-                        &scrape.provider.destination,
-                        scrape_request_row.id,
-                        media.media_url,
-                        post.url,
-                        media.reference_url,
-                        media.unique_identifier,
-                        post.post_date,
-                        request.date
-                    )
-                            .fetch_optional(&mut tx)
-                            .await?;
+                            // sometimes we end up re-scraping the latest known images
+                            &scrape.provider.name.to_string(),
+                            &scrape.provider.destination,
+                            scrape_request_row.id,
+                            media.media_url,
+                            post.url,
+                            media.reference_url,
+                            media.unique_identifier,
+                            post.post_date,
+                            request.date
+                        )
+                        .fetch_optional(&mut tx)
+                        .await?;
                     }
                 }
             }
-            ScraperStep::Error(ProviderFailure::HttpError(err)) => {
-                match &err {
+            ScraperStep::Error(ProviderFailure::HttpError(error)) => {
+                match &error {
                     HttpError::ReqwestError(err) => {
                         // we should not be getting request related errors, only response errors
                         if err.is_request() {
@@ -168,10 +168,10 @@ pub async fn process_scrape<'a>(
                                 "INSERT INTO scrape_error (scrape_id, response_code)
                                 VALUES ($1, $2)",
                                 scrape_id,
-                                status.as_u16() as i32,
+                                status.as_u16() as i32
                             )
-                                .fetch_one(&mut tx)
-                                .await?;
+                            .fetch_one(&mut tx)
+                            .await?;
                         } else {
                             error!("Got an unexpected error from a provider that doesn't have a status",);
                             error!("{:?}", err);
@@ -180,14 +180,15 @@ pub async fn process_scrape<'a>(
                     }
                     HttpError::FailStatus(ctx) | HttpError::UnexpectedBody(ctx) => {
                         sqlx::query!(
-                            "INSERT INTO scrape_error (scrape_id, response_code, response_body)
-                            VALUES ($1, $2, $3) returning id",
+                            "INSERT INTO scrape_error (scrape_id, response_code, response_body, message)
+                            VALUES ($1, $2, $3, $4) returning id",
                             scrape_id,
                             ctx.code.as_u16() as i32,
                             ctx.body,
+                            ctx.message,
                         )
-                            .fetch_one(&mut tx)
-                            .await?;
+                        .fetch_one(&mut tx)
+                        .await?;
                     }
                 }
             }
@@ -240,8 +241,8 @@ pub async fn submit_webhook_responses(
                 code.as_u16() as i32,
                 response_time
             )
-                .fetch_one(&mut tx)
-                .await?;
+            .fetch_one(&mut tx)
+            .await?;
         } else {
             println!(
                 "Failed to persist webhook response from {}",
@@ -274,8 +275,8 @@ pub async fn latest_requests(
             ORDER BY sr.scraped_at desc
             LIMIT 50",
     )
-        .fetch_all(db)
-        .await?;
+    .fetch_all(db)
+    .await?;
     let scrape_ids = results
         .iter()
         .unique_by(|rec| rec.scrape_id)
@@ -292,8 +293,8 @@ pub async fn latest_requests(
         where s.id = ANY($1)",
         &scrape_ids
     )
-        .fetch_all(db)
-        .await?;
+    .fetch_all(db)
+    .await?;
 
     let media_map = medias
         .into_iter()

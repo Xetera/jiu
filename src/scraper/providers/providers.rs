@@ -7,7 +7,7 @@ use governor::{Jitter, Quota, RateLimiter};
 use log::{debug, error, info};
 use nonzero_ext::nonzero;
 use parking_lot::RwLock;
-use reqwest::{Client, StatusCode};
+use reqwest::{Client, IntoUrl, StatusCode, Url};
 use serde;
 use serde::{Deserialize, Serialize};
 use strum_macros;
