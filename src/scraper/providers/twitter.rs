@@ -79,7 +79,7 @@ impl Provider for TwitterTimeline {
     }
 
     fn next_page_size(&self, last_scraped: Option<NaiveDateTime>, iteration: usize) -> PageSize {
-        PageSize(if iteration > 1 {
+        PageSize(if iteration >= 1 {
             100
         } else {
             20
@@ -127,7 +127,7 @@ impl Provider for TwitterTimeline {
     }
 
     fn max_pagination(&self) -> u16 {
-        2
+        3
     }
 
     async fn unfold(&self, state: ProviderState) -> Result<ProviderStep, ProviderFailure> {
@@ -157,6 +157,7 @@ impl Provider for TwitterTimeline {
         // Twitter does some really interesting stuff with how they present API data
         let maybe_instruction = response_json.timeline.instructions.iter().find_map(|instruction| instruction.get("addEntries"));
         let tweet_db = response_json.global_objects.tweets;
+        let user_db = response_json.global_objects.users;
         let entries = match maybe_instruction {
             Some(Entries::AddEntries { entries }) => entries,
             _ => return Err(ProviderFailure::Other("Could not find an 'addEntries' in instructions".to_owned())),
@@ -186,6 +187,21 @@ impl Provider for TwitterTimeline {
                 .map(|e| e.naive_utc());
             let body = tweet.full_text.clone().map(|t| replace_twitter_string(&t));
             tweet.entities.media.as_ref().map(|media| {
+                // very hacky disgusting way to get
+                // https://twitter.com/hf_dreamcatcher/status/1459831679107756039
+                // from
+                // https://twitter.com/hf_dreamcatcher/status/1459831679107756039/photo/1
+                // otherwise we have to do a lookup on the user global object which I'm too lazy for
+                let url = media.get(0).and_then(|media| {
+                    replace_twitter_string(&media.expanded_url)
+                        .split("/photo/")
+                        .collect::<Vec<_>>()
+                        .get(0)
+                        .map(|&e| e.to_owned())
+                });
+                let url = user_db.get(&tweet.user_id_str).map(|user| {
+                    format!("https://twitter.com/{}/status/{}", &user.screen_name, &unique_identifier)
+                });
                 ProviderPost {
                     unique_identifier,
                     metadata: serde_json::to_value(TwitterPostMetadata {
@@ -193,7 +209,7 @@ impl Provider for TwitterTimeline {
                         retweet_count,
                         language,
                     }).ok(),
-                    url: None,
+                    url,
                     post_date,
                     images: media.into_iter().map(|media| {
                         ProviderMedia {
@@ -211,7 +227,6 @@ impl Provider for TwitterTimeline {
                 }
             })
         }).collect::<Vec<_>>();
-        println!("{:?}", posts);
 
         let cursor_entry = &entries.last();
         let cursor = cursor_entry.and_then(|c| c.content.operation.as_ref().map(|o| o.cursor.value.clone()));
@@ -234,15 +249,10 @@ impl Provider for TwitterTimeline {
             .headers(HeaderMap::from_iter([(HeaderName::from_static("user-agent"), HeaderValue::from_static(USER_AGENT))]))
             .send()
             .await?;
-        println!("SUCCESSFULLY SENT REQUEST");
         let html = login.text().await?;
-        println!("SUCCESSFULLY SCRAPED HTML");
         let regex = Regex::new(r#"gt=(.*?);"#).unwrap();
-        println!("SUCCESSFULLY CREATED HTML");
         let captures = regex.captures(&html).unwrap();
-        println!("SUCCESSFULLY CAPTURED ALL");
         let capture = captures.get(1).expect("Couldn't match a guest token in the twitter homepage, the site was changed");
-        println!("SUCCESSFULLY CAPTURED {}", capture.as_str());
         Ok(ProviderCredentials {
             access_token: capture.as_str().to_owned(),
             refresh_token: "".to_owned(),
@@ -252,7 +262,7 @@ impl Provider for TwitterTimeline {
     fn on_error(&self, error: &HttpError) -> anyhow::Result<ProviderErrorHandle> {
         match error {
             HttpError::FailStatus(e) | HttpError::UnexpectedBody(e) => {
-                if e.code == 429 {
+                if e.code == 403 {
                     Ok(ProviderErrorHandle::Login)
                 } else {
                     // unknown error at this point

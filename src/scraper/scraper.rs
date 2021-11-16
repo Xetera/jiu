@@ -3,7 +3,7 @@ use std::time::Instant;
 use async_recursion::async_recursion;
 use chrono::{NaiveDateTime, Utc};
 use futures::StreamExt;
-use log::{debug, info};
+use log::{debug, info, trace};
 
 use crate::scraper::{ProviderMedia, ProviderPost, providers::{CredentialRefresh, ProviderErrorHandle}};
 
@@ -189,8 +189,7 @@ pub async fn scrape<'a>(
                     step: ScraperStep::Data(ProviderResult { posts, ..page }),
                 });
 
-                let has_known_image = new_image_count > 0;
-                if has_known_image {
+                if new_image_count == 0 {
                     info!(
                         "[{}] has finished crawling because it's back to the last scraped data point",
                         sp
@@ -207,6 +206,7 @@ pub async fn scrape<'a>(
                     );
                     break;
                 }
+                trace!("Waiting for provider rate limit...");
                 provider.wait(&sp.destination).await;
             }
         }

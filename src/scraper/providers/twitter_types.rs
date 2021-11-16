@@ -257,7 +257,7 @@ pub struct SelfThread {
 pub struct User {
     pub(crate) id_str: String,
     // pub(crate) name: String,
-    // pub(crate) screen_name: String,
+    pub(crate) screen_name: String,
     // pub(crate) location: String,
     // pub(crate) description: String,
     // pub(crate) url: Option<String>,

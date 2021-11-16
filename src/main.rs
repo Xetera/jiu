@@ -16,7 +16,6 @@ use jiu::{
     webhook::dispatcher::dispatch_webhooks,
 };
 use tokio::join;
-use jiu::scraper::twitter_types::Twitter;
 
 struct Context {
     db: Arc<Pool<Postgres>>,
@@ -29,6 +28,7 @@ async fn iter(
 ) -> anyhow::Result<()> {
     let sp = pending.provider.clone();
     let latest_data = latest_media_ids_from_provider(&ctx.db, &sp).await?;
+    let is_first_scrape = !latest_data.is_empty();
     let step = ScrapeRequestInput {
         latest_data,
         last_scrape: pending.last_scrape,
@@ -36,7 +36,8 @@ async fn iter(
     let mut result = scrape(&sp, &*provider, &step).await?;
 
     let webhooks = webhooks_for_provider(&ctx.db, &sp).await?;
-    let webhook_interactions = if !result.requests.is_empty() {
+    // we don't want to dispatch webhooks for the first scrape that we make on a page
+    let webhook_interactions = if !result.requests.is_empty() && !is_first_scrape {
         Some(dispatch_webhooks(&*provider, &result, webhooks).await)
     } else {
         None
