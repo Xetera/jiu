@@ -1,49 +1,5 @@
 {
   "db": "PostgreSQL",
-  "02c2cc08aac3620a973bbf9c1bf479fda921d0027fefaeb2b19183520d1c8a8b": {
-    "query": "INSERT INTO scrape_error (scrape_id, response_code, response_body)\n                            VALUES ($1, $2, $3) returning id",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int4"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Int4",
-          "Text",
-          "Text"
-        ]
-      },
-      "nullable": [
-        false
-      ]
-    }
-  },
-  "0896e8a7184149402dd23ae9432d6a6c39c8650b3b4b3438926b8ec6dacadbb2": {
-    "query": "UPDATE provider_resource\n        SET\n            tokens = LEAST(4, tokens + priority),\n            last_token_update = NOW()\n        WHERE last_token_update IS NULL OR last_token_update + interval '1 day' <= NOW()",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": []
-      },
-      "nullable": []
-    }
-  },
-  "237d83644ae702077ae9035f141b4e78e193a80991a58268cbfb8c6ddaeb9e6e": {
-    "query": "UPDATE provider_resource SET last_queue = NOW() WHERE id = $1",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": [
-          "Int4"
-        ]
-      },
-      "nullable": []
-    }
-  },
   "28ea8ebc15f0951e95e4bcc43d708a364e0b1ebcaeba0a3fe85fb7c5dcf73e50": {
     "query": "SELECT\n            pr.id,\n            pr.name,\n            pr.destination,\n            s.priority as resource_priority,\n            s.scraped_at,\n            s.priority,\n            (SELECT COUNT(*)\n              FROM media m\n              INNER JOIN scrape_request sr\n                on sr.id = m.scrape_request_id\n              where sr.scrape_id = s.id\n            ) as discovery_count\n        FROM provider_resource pr\n        INNER JOIN LATERAL (\n            SELECT *\n            FROM scrape s\n            WHERE s.provider_name = pr.name\n              AND s.provider_destination = pr.destination\n            ORDER BY s.scraped_at desc, id\n            LIMIT 30\n        ) s on True\n        WHERE pr.enabled AND pr.id = ANY($1)\n        ORDER BY s.scraped_at desc",
     "describe": {
@@ -138,6 +94,51 @@
       ]
     }
   },
+  "405a407b466524db0e109ebee26b5f0df77bb7ad1f936b3e048deb97fd613fde": {
+    "query": "SELECT webhook.*, webhook_source.metadata FROM webhook\n        JOIN webhook_source on webhook_source.webhook_id = webhook.id\n        WHERE webhook_source.provider_destination = $1 AND webhook_source.provider_name = $2",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "destination",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 2,
+          "name": "created_at",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 3,
+          "name": "updated_at",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 4,
+          "name": "metadata",
+          "type_info": "Jsonb"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    }
+  },
   "49b92dc58bba0e5bcfe072c2bff3478f2145be6f1a691ce8775db65a98080a69": {
     "query": "UPDATE provider_resource\n        SET\n            last_scrape = NOW(),\n            tokens = tokens - 1\n        WHERE name = $1 AND destination = $2\n        RETURNING *",
     "describe": {
@@ -196,6 +197,11 @@
           "ordinal": 10,
           "name": "last_token_update",
           "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 11,
+          "name": "default_name",
+          "type_info": "Text"
         }
       ],
       "parameters": {
@@ -214,6 +220,34 @@
         true,
         true,
         true,
+        false,
+        true,
+        true
+      ]
+    }
+  },
+  "5e1d2168279257c8914647be97f9b09529e9127e69a037f33bac5640c54a688d": {
+    "query": "SELECT id, metadata FROM amqp_source a WHERE a.provider_destination = $1 AND a.provider_name = $2 LIMIT 1",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "metadata",
+          "type_info": "Jsonb"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text"
+        ]
+      },
+      "nullable": [
         false,
         true
       ]
@@ -269,51 +303,6 @@
         true,
         true,
         false
-      ]
-    }
-  },
-  "9edd53013cf08a340b0bc52fb02a894146bb8cca3a7d58281910f9779e67e9a6": {
-    "query": "SELECT webhook.* FROM webhook\n        JOIN webhook_source on webhook_source.webhook_id = webhook.id\n        WHERE webhook_source.provider_destination = $1 AND webhook_source.provider_name = $2",
-    "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 1,
-          "name": "destination",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 2,
-          "name": "created_at",
-          "type_info": "Timestamp"
-        },
-        {
-          "ordinal": 3,
-          "name": "updated_at",
-          "type_info": "Timestamp"
-        },
-        {
-          "ordinal": 4,
-          "name": "metadata",
-          "type_info": "Jsonb"
-        }
-      ],
-      "parameters": {
-        "Left": [
-          "Text",
-          "Text"
-        ]
-      },
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        true
       ]
     }
   },
@@ -375,6 +364,11 @@
           "ordinal": 10,
           "name": "last_token_update",
           "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 11,
+          "name": "default_name",
+          "type_info": "Text"
         }
       ],
       "parameters": {
@@ -391,7 +385,31 @@
         true,
         true,
         false,
+        true,
         true
+      ]
+    }
+  },
+  "b942bd68d463cf99cc4727bf638c832af591023d2c6f7002fac47fc4e745a8ea": {
+    "query": "INSERT INTO scrape_error (scrape_id, response_code, response_body, message)\n                            VALUES ($1, $2, $3, $4) returning id",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int4",
+          "Text",
+          "Text",
+          "Text"
+        ]
+      },
+      "nullable": [
+        false
       ]
     }
   },
@@ -525,6 +543,16 @@
           "Int4",
           "Text"
         ]
+      },
+      "nullable": []
+    }
+  },
+  "da4b8098ac3a0dc2380f1d3ac10bb6dbe4688adca073e2731bde9c78faba444e": {
+    "query": "UPDATE provider_resource\n        SET\n            tokens = LEAST(4, tokens + priority),\n            last_token_update = NOW()\n        WHERE enabled = True AND (last_token_update IS NULL OR last_token_update + interval '1 day' <= NOW())",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": []
       },
       "nullable": []
     }
