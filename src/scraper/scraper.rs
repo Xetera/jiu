@@ -4,6 +4,7 @@ use async_recursion::async_recursion;
 use chrono::{NaiveDateTime, Utc};
 use futures::StreamExt;
 use log::{debug, info, trace};
+use crate::models::PendingProvider;
 
 use crate::scraper::{ProviderMedia, ProviderPost, providers::{CredentialRefresh, ProviderErrorHandle}};
 
@@ -119,6 +120,7 @@ async fn request_page<'a>(
                 Ok(url) => {
                     let next_state = ProviderState {
                         id,
+                        default_name: input.default_name.clone(),
                         url: url.clone(),
                         pagination: Some(pagination.clone()),
                         iteration: iteration + 1,
@@ -142,6 +144,7 @@ pub async fn scrape<'a>(
 
     let seed = ProviderState {
         id: id.clone(),
+        default_name: input.default_name.clone(),
         url,
         pagination: None,
         iteration: initial_iteration,

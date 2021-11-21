@@ -1,5 +1,5 @@
-use std::{collections::HashMap, sync::Arc, time::Instant};
 use std::time::Duration;
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use async_trait::async_trait;
 use chrono::NaiveDateTime;
@@ -7,12 +7,12 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+use crate::request::HttpError;
 use crate::{
     request::{parse_successful_response, request_default_headers},
     scheduler::UnscopedLimiter,
     scraper::providers::ProviderMediaType,
 };
-use crate::request::HttpError;
 
 use super::*;
 
@@ -28,9 +28,23 @@ pub struct PinterestRichSummary {
     pub url: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct PinterestPinner {
+    pub full_name: String,
+    // I don't know if these are really optional, but just to be safe
+    pub image_xlarge_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PinterestBoard {
+    pub name: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct PinterestImages {
     pub id: String,
+    pub pinner: Option<PinterestPinner>,
+    pub board: Option<PinterestBoard>,
     pub images: HashMap<String, PinterestImage>,
     pub rich_summary: Option<PinterestRichSummary>,
 }
@@ -91,8 +105,8 @@ impl RateLimitable for PinterestBoardFeed {
 #[async_trait]
 impl Provider for PinterestBoardFeed {
     fn new(input: ProviderInput) -> Self
-        where
-            Self: Sized,
+    where
+        Self: Sized,
     {
         Self {
             client: Arc::clone(&input.client),
@@ -157,22 +171,28 @@ impl Provider for PinterestBoardFeed {
                 // I imagine every image has an "orig" size but we can't know for sure
                 pin.images.get("orig").map(|elem| {
                     ProviderPost {
+                        account: pin
+                            .pinner
+                            .clone()
+                            .map(|pinner| ProviderAccount {
+                                name: pinner.full_name,
+                                avatar_url: pinner.image_xlarge_url,
+                            })
+                            .unwrap_or_default(),
                         unique_identifier: pin.id.clone(),
                         url: Some(format!("https://www.pinterest.com/pin/{}", pin.id)),
                         post_date: None,
                         // There might be a body here but I don't really care, it's pinterest
                         body: None,
-                        images: vec![
-                            ProviderMedia {
-                                _type: ProviderMediaType::Image,
-                                media_url: elem.url.to_owned(),
-                                // yes, pinterest literally does not tell you when things were
-                                // pinned. It's so stupid
-                                reference_url: pin.rich_summary.clone().map(|sum| sum.url),
-                                unique_identifier: pin.id.to_owned(),
-                                metadata: None,
-                            }
-                        ],
+                        images: vec![ProviderMedia {
+                            _type: ProviderMediaType::Image,
+                            media_url: elem.url.to_owned(),
+                            // yes, pinterest literally does not tell you when things were
+                            // pinned. It's so stupid
+                            reference_url: pin.rich_summary.clone().map(|sum| sum.url),
+                            unique_identifier: pin.id.to_owned(),
+                            metadata: None,
+                        }],
                         metadata: None,
                     }
                 })

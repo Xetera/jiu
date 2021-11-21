@@ -54,6 +54,8 @@ pub struct ScrapeHistory {
 
 pub struct PendingProvider {
     pub id: i32,
+    /// the name that is used if a more relevant name for posts cannot be found 
+    pub default_name: Option<String>,
     pub priority: Priority,
     pub provider: ScopedProvider,
     pub scrape_date: Duration,

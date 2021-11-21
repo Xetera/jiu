@@ -212,11 +212,20 @@ impl Provider for UnitedCubeArtistFeed {
         let cube_url = url::Url::parse(BASE_URL).unwrap();
         let response_json = parse_successful_response::<Page>(response).await?;
 
+        let account = state
+            .default_name
+            .map(|name| ProviderAccount {
+                name,
+                avatar_url: None,
+            })
+            .unwrap_or_default();
         let posts = response_json
             .items
             .into_iter()
             .map(|post| {
                 ProviderPost {
+                    // UCube does not give us any kind of user information
+                    account: account.clone(),
                     unique_identifier: post.slug,
                     // TODO: maybe add page urls to this anyways?
                     // united-cube doesn't have page-specific links, they all go to

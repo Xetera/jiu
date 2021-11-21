@@ -14,9 +14,9 @@ use serde::{Deserialize, Serialize};
 use sha1::Sha1;
 
 use crate::{
-    request::{HttpError, parse_successful_response, request_default_headers},
+    request::{parse_successful_response, request_default_headers, HttpError},
     scheduler::UnscopedLimiter,
-    scraper::{ProviderMedia, ProviderResult, providers::ProviderMediaType},
+    scraper::{providers::ProviderMediaType, ProviderMedia, ProviderResult},
 };
 
 use super::*;
@@ -233,7 +233,7 @@ fn url_from_post(artist_id: u32, post_id: u64, photo_id: u64) -> String {
         "https://weverse.io/{}/artist/{}?photoId={}",
         artist_name, post_id, photo_id
     )
-        .to_owned()
+    .to_owned()
 }
 
 const MAX_PAGESIZE: usize = 30;
@@ -243,8 +243,8 @@ const DEFAULT_PAGESIZE: usize = 16;
 #[async_trait]
 impl RateLimitable for WeverseArtistFeed {
     fn quota() -> Quota
-        where
-            Self: Sized,
+    where
+        Self: Sized,
     {
         default_quota()
     }
@@ -258,8 +258,8 @@ impl RateLimitable for WeverseArtistFeed {
 #[async_trait]
 impl Provider for WeverseArtistFeed {
     fn new(input: ProviderInput) -> Self
-        where
-            Self: Sized,
+    where
+        Self: Sized,
     {
         Self {
             credentials: create_credentials(),
@@ -359,13 +359,20 @@ impl Provider for WeverseArtistFeed {
                 let author_id = user.artist_id;
                 let post_created_at = post.created_at;
                 let photos = post.photos.unwrap_or(vec![]);
-                let page_url = photos.get(0).map(|photo| url_from_post(community_id, post_id, photo.id));
+                let page_url = photos
+                    .get(0)
+                    .map(|photo| url_from_post(community_id, post_id, photo.id));
                 ProviderPost {
+                    account: ProviderAccount {
+                        avatar_url: Some(user.profile_img_path),
+                        name: author_name.clone(),
+                    },
                     unique_identifier: post_id.to_string(),
                     metadata: serde_json::to_value(PostMetadata {
                         author_id,
                         author_name: author_name.clone(),
-                    }).ok(),
+                    })
+                    .ok(),
                     body: post.body,
                     url: page_url,
                     post_date: Some(post_created_at.naive_utc()),
@@ -382,7 +389,8 @@ impl Provider for WeverseArtistFeed {
                                     height: photo.org_img_height,
                                     width: photo.org_img_width,
                                     thumbnail_url: photo.thumbnail_img_url.clone(),
-                                }).ok(),
+                                })
+                                .ok(),
                             }
                         })
                         // not sure why I have to do this here

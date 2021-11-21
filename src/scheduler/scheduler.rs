@@ -63,6 +63,7 @@ pub async fn pending_scrapes(db: &Database) -> anyhow::Result<Vec<PendingProvide
                             name: AllProviders::from_str(&row.name).unwrap(),
                         }, // last_scrape: row.last_scrape,
                         row.last_scrape,
+                        row.default_name.clone(),
                     )
                 })
                 .collect::<Vec<_>>()
@@ -85,12 +86,15 @@ pub async fn pending_scrapes(db: &Database) -> anyhow::Result<Vec<PendingProvide
                 .iter()
                 .zip(dates)
                 .map(
-                    |((id, priority, provider, last_scrape), scrape_date)| PendingProvider {
-                        id: *id,
-                        priority: priority.clone(),
-                        provider: provider.clone(),
-                        scrape_date,
-                        last_scrape: *last_scrape,
+                    |((id, priority, provider, last_scrape, default_name), scrape_date)| {
+                        PendingProvider {
+                            id: *id,
+                            priority: priority.clone(),
+                            provider: provider.clone(),
+                            scrape_date,
+                            last_scrape: *last_scrape,
+                            default_name: default_name.clone(),
+                        }
                     },
                 )
                 .collect::<Vec<_>>()

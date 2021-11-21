@@ -23,9 +23,9 @@ use super::*;
 
 fn twitter_type_to_provider(media_type: &Type) -> ProviderMediaType {
     match media_type {
-        AnimatedGif => ProviderMediaType::Image,
-        Photo => ProviderMediaType::Image,
-        Video => ProviderMediaType::Video,
+        Type::AnimatedGif => ProviderMediaType::Image,
+        Type::Photo => ProviderMediaType::Image,
+        Type::Video => ProviderMediaType::Video,
     }
 }
 
@@ -217,13 +217,20 @@ impl Provider for TwitterTimeline {
                             .get(0)
                             .map(|&e| e.to_owned())
                     });
-                    let url = user_db.get(&tweet.user_id_str).map(|user| {
+                    let user_option = user_db.get(&tweet.user_id_str);
+                    let url = user_option.map(|user| {
                         format!(
                             "https://twitter.com/{}/status/{}",
                             &user.screen_name, &unique_identifier
                         )
                     });
                     ProviderPost {
+                        account: user_option
+                            .map(|user| ProviderAccount {
+                                name: user.screen_name.clone(),
+                                avatar_url: user.profile_image_url_https.clone(),
+                            })
+                            .unwrap_or_default(),
                         unique_identifier,
                         metadata: serde_json::to_value(TwitterPostMetadata {
                             like_count,
@@ -256,17 +263,7 @@ impl Provider for TwitterTimeline {
         let cursor_entry = &entries.last();
         let cursor =
             cursor_entry.and_then(|c| c.content.operation.as_ref().map(|o| o.cursor.value.clone()));
-        let user_option = user_db.get(&state.id);
         let result = ProviderResult {
-            account: user_option
-                .map(|user| ProviderAccount {
-                    name: user.screen_name.clone(),
-                    avatar_url: user.profile_image_url_https.clone(),
-                })
-                .unwrap_or(ProviderAccount {
-                    name: "Unknown Twitter User".to_owned(),
-                    avatar_url: None,
-                }),
             posts,
             response_code,
             response_delay,

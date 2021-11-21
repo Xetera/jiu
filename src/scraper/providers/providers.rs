@@ -44,6 +44,7 @@ pub struct ProviderMedia {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderPost {
+    pub account: ProviderAccount,
     pub unique_identifier: String,
     pub images: Vec<ProviderMedia>,
     pub body: Option<String>,
@@ -55,15 +56,23 @@ pub struct ProviderPost {
     pub metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderAccount {
     pub name: String,
     pub avatar_url: Option<String>,
 }
 
+impl Default for ProviderAccount {
+    fn default() -> Self {
+        Self {
+            name: "Unknown user".to_owned(),
+            avatar_url: None,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ProviderResult {
-    pub account: ProviderAccount,
     pub posts: Vec<ProviderPost>,
     pub response_delay: Duration,
     pub response_code: StatusCode,
@@ -73,7 +82,6 @@ impl Add<ProviderResult> for ProviderResult {
     type Output = ProviderResult;
     fn add(self, rhs: ProviderResult) -> Self::Output {
         ProviderResult {
-            account: rhs.account,
             response_code: rhs.response_code,
             response_delay: rhs.response_delay,
             posts: [self.posts, rhs.posts].concat(),
@@ -108,6 +116,7 @@ impl From<reqwest::Error> for ProviderFailure {
 #[derive(Debug, Clone)]
 pub struct ProviderState {
     pub id: String,
+    pub default_name: Option<String>,
     pub url: ScrapeUrl,
     pub pagination: Option<Pagination>,
     pub iteration: usize,
@@ -115,6 +124,7 @@ pub struct ProviderState {
 
 pub struct ScrapeRequestInput {
     pub latest_data: HashSet<String>,
+    pub default_name: Option<String>,
     pub last_scrape: Option<NaiveDateTime>,
 }
 

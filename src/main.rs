@@ -33,6 +33,7 @@ async fn iter(
     let _is_first_scrape = !latest_data.is_empty();
     let step = ScrapeRequestInput {
         latest_data,
+        default_name: pending.default_name.clone(),
         last_scrape: pending.last_scrape,
     };
     let mut result = scrape(&sp, &*provider, &step).await?;
