@@ -13,7 +13,7 @@ pub struct AMQPDispatcher {
     channel: Channel,
 }
 
-const DIRECT_QUEUE_NAME: &'static str = "image_discovery";
+const DIRECT_QUEUE_NAME: &str = "image_discovery";
 
 impl AMQPDispatcher {
     pub async fn from_connection_string(url: &str) -> LapinResult<Self> {

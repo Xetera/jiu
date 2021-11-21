@@ -97,7 +97,7 @@ struct Page {
     items: Vec<Post>,
 }
 
-const BASE_URL: &'static str = "https://www.united-cube.com";
+const BASE_URL: &str = "https://www.united-cube.com";
 
 fn extract_url_and_id(path: &str, base_url: &url::Url) -> anyhow::Result<(url::Url, String)> {
     // ucube is missing a leading slash in their links lol

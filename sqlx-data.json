@@ -190,13 +190,13 @@
         },
         {
           "ordinal": 9,
-          "name": "tokens",
-          "type_info": "Numeric"
+          "name": "last_token_update",
+          "type_info": "Timestamp"
         },
         {
           "ordinal": 10,
-          "name": "last_token_update",
-          "type_info": "Timestamp"
+          "name": "tokens",
+          "type_info": "Numeric"
         },
         {
           "ordinal": 11,
@@ -220,8 +220,8 @@
         true,
         true,
         true,
-        false,
         true,
+        false,
         true
       ]
     }
@@ -357,13 +357,13 @@
         },
         {
           "ordinal": 9,
-          "name": "tokens",
-          "type_info": "Numeric"
+          "name": "last_token_update",
+          "type_info": "Timestamp"
         },
         {
           "ordinal": 10,
-          "name": "last_token_update",
-          "type_info": "Timestamp"
+          "name": "tokens",
+          "type_info": "Numeric"
         },
         {
           "ordinal": 11,
@@ -384,8 +384,8 @@
         true,
         true,
         true,
-        false,
         true,
+        false,
         true
       ]
     }

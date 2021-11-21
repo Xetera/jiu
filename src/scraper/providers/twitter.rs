@@ -39,11 +39,11 @@ pub struct TwitterTimeline {
     pub rate_limiter: UnscopedLimiter,
 }
 
-const BASE_URL: &'static str = "https://twitter.com/";
+const BASE_URL: &str = "https://twitter.com/";
 /// I have no idea where this token is coming from...
-const MAGIC_BEARER_TOKEN: &'static str = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA";
+const MAGIC_BEARER_TOKEN: &str = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA";
 
-const USER_AGENT: &'static str = "HTC Mozilla/5.0 (Linux; Android 7.0; HTC 10 Build/NRD90M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.83 Mobile Safari/537.36";
+const USER_AGENT: &str = "HTC Mozilla/5.0 (Linux; Android 7.0; HTC 10 Build/NRD90M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.83 Mobile Safari/537.36";
 
 #[async_trait]
 impl RateLimitable for TwitterTimeline {

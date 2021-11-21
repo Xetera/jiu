@@ -1,12 +1,8 @@
 use futures::{stream, StreamExt};
-use log::error;
 use reqwest::{Client, Response};
 use serde::Serialize;
-use std::sync::Arc;
-use std::{cmp::min, sync::RwLock, time::Instant};
+use std::{sync::RwLock, time::Instant};
 
-use crate::scraper::scraper::ScraperStep::Error;
-use crate::scraper::ProviderFailure;
 use crate::{
     dispatcher::{webhook_type, WebhookDestination},
     models::DatabaseWebhook,
@@ -18,7 +14,6 @@ use crate::{
 };
 
 use super::super::scraper::Provider;
-use super::discord::*;
 
 pub struct WebhookDispatch {
     pub webhook: DatabaseWebhook,
