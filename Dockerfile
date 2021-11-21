@@ -20,9 +20,9 @@ RUN cargo build --release
 # Second stage putting the build result into a debian jessie-slim image
 FROM debian:buster-slim
 
-# RUN apt-get update \
-#     && apt-get install -y ca-certificates tzdata libc6 \
-#     && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && apt-get install -y ca-certificates tzdata libc6 \
+    && rm -rf /var/lib/apt/lists/*
 ENV NAME=rust-docker
 ENV RUST_LOG=jiu=debug
 COPY --from=builder /usr/src/builder/target/release/jiu /usr/local/bin/jiu
