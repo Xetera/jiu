@@ -8,11 +8,13 @@ use log::error;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{Error, Pool, Postgres};
 
-use crate::models::{DatabaseWebhook, PendingProvider, ScrapeRequestMedia, ScrapeRequestWithMedia};
+use crate::dispatcher::dispatcher::WebhookInteraction;
+use crate::models::{
+    AMQPDestination, DatabaseWebhook, PendingProvider, ScrapeRequestMedia, ScrapeRequestWithMedia,
+};
 use crate::request::HttpError;
 use crate::scraper::scraper::{Scrape, ScraperStep};
 use crate::scraper::{ProviderFailure, ScopedProvider};
-use crate::webhook::dispatcher::WebhookInteraction;
 
 pub type Database = Pool<Postgres>;
 
@@ -42,13 +44,26 @@ pub async fn latest_media_ids_from_provider(
     Ok(HashSet::from_iter(out.into_iter()))
 }
 
+pub async fn amqp_metadata(
+    db: &Database,
+    sp: &ScopedProvider,
+) -> anyhow::Result<Option<AMQPDestination>> {
+    let result = sqlx::query_as!(
+        AMQPDestination,
+        "SELECT id, metadata FROM amqp_source a WHERE a.provider_destination = $1 AND a.provider_name = $2 LIMIT 1",
+        sp.destination,
+        sp.name.to_string()
+    ).fetch_optional(db).await?;
+    Ok(result)
+}
+
 pub async fn webhooks_for_provider(
     db: &Database,
     provider_resolvable: &ScopedProvider,
 ) -> anyhow::Result<Vec<DatabaseWebhook>> {
     Ok(sqlx::query_as!(
         DatabaseWebhook,
-        "SELECT webhook.* FROM webhook
+        "SELECT webhook.*, webhook_source.metadata FROM webhook
         JOIN webhook_source on webhook_source.webhook_id = webhook.id
         WHERE webhook_source.provider_destination = $1 AND webhook_source.provider_name = $2",
         provider_resolvable.destination,

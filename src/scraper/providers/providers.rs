@@ -56,7 +56,14 @@ pub struct ProviderPost {
 }
 
 #[derive(Debug)]
+pub struct ProviderAccount {
+    pub name: String,
+    pub avatar_url: Option<String>,
+}
+
+#[derive(Debug)]
 pub struct ProviderResult {
+    pub account: ProviderAccount,
     pub posts: Vec<ProviderPost>,
     pub response_delay: Duration,
     pub response_code: StatusCode,
@@ -66,6 +73,7 @@ impl Add<ProviderResult> for ProviderResult {
     type Output = ProviderResult;
     fn add(self, rhs: ProviderResult) -> Self::Output {
         ProviderResult {
+            account: rhs.account,
             response_code: rhs.response_code,
             response_delay: rhs.response_delay,
             posts: [self.posts, rhs.posts].concat(),
@@ -179,8 +187,7 @@ pub trait RateLimitable {
 
 pub fn default_quota() -> Quota {
     // fairly aggressive quota
-    Quota::with_period(Duration::from_millis(3500u64))
-        .unwrap()
+    Quota::with_period(Duration::from_millis(3500u64)).unwrap()
 }
 
 pub fn default_jitter() -> Jitter {

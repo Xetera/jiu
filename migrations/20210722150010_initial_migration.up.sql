@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS webhook(
   destination TEXT NOT NULL UNIQUE,
   created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
-  -- extra data attached to a webhook invocation
+  -- extra data attached to a dispatcher invocation
   metadata JSONB
 );
 

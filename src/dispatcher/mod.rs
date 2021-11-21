@@ -1,9 +1,11 @@
 use self::discord::is_discord_webhook_url;
 
+pub mod amqp;
 mod discord;
 pub mod dispatcher;
 
 pub enum WebhookDestination {
+    #[deprecated]
     Discord,
     Custom,
 }

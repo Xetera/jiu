@@ -9,13 +9,15 @@ use governor::Quota;
 use log::error;
 use num_traits::identities;
 use regex::Regex;
-use reqwest::Client;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use crate::request::{HttpError, parse_successful_response};
+use crate::request::{parse_successful_response, HttpError};
 use crate::scheduler::UnscopedLimiter;
-use crate::scraper::providers::twitter_types::{Entries, Twitter, TwitterImageMetadata, TwitterPostMetadata, Type};
+use crate::scraper::providers::twitter_types::{
+    Entries, Twitter, TwitterImageMetadata, TwitterPostMetadata, Type,
+};
 
 use super::*;
 
@@ -46,8 +48,8 @@ const USER_AGENT: &'static str = "HTC Mozilla/5.0 (Linux; Android 7.0; HTC 10 Bu
 #[async_trait]
 impl RateLimitable for TwitterTimeline {
     fn quota() -> Quota
-        where
-            Self: Sized,
+    where
+        Self: Sized,
     {
         default_quota()
     }
@@ -64,8 +66,8 @@ impl Provider for TwitterTimeline {
         AllProviders::TwitterTimeline
     }
     fn new(input: ProviderInput) -> Self
-        where
-            Self: Sized,
+    where
+        Self: Sized,
     {
         Self {
             guest_token: create_credentials(),
@@ -79,11 +81,7 @@ impl Provider for TwitterTimeline {
     }
 
     fn next_page_size(&self, last_scraped: Option<NaiveDateTime>, iteration: usize) -> PageSize {
-        PageSize(if iteration >= 1 {
-            100
-        } else {
-            20
-        })
+        PageSize(if iteration >= 1 { 100 } else { 20 })
     }
     fn from_provider_destination(
         &self,
@@ -115,8 +113,8 @@ impl Provider for TwitterTimeline {
             // ("send_error_codes", "true"),
             // ("simple_quoted_tweet", "true"),
             // ("include_tweet_replies", "true"),
-            ("ext", "mediaStats%2ChighlightedLabel")]
-        );
+            ("ext", "mediaStats%2ChighlightedLabel"),
+        ]);
         url_fragment.page_size("count", page_size);
         url_fragment.pagination("cursor", &pagination);
         let url = url_fragment.build_scrape_url(&format!(
@@ -137,122 +135,164 @@ impl Provider for TwitterTimeline {
             None => return Ok(ProviderStep::NotInitialized),
         };
         let instant = Instant::now();
-        let response = self.client.get(state.url.0).headers(
-            HeaderMap::from_iter([(
-                HeaderName::from_static("user-agent"),
-                //죄송합니다
-                HeaderValue::from_static(USER_AGENT)
-            ), (
-                HeaderName::from_static("authorization"),
-                HeaderValue::from_static(MAGIC_BEARER_TOKEN)
-            ), (
-                HeaderName::from_static("x-guest-token"),
-                HeaderValue::from_str(&token.access_token).unwrap()
-            )]))
+        let response = self
+            .client
+            .get(state.url.0)
+            .headers(HeaderMap::from_iter([
+                (
+                    HeaderName::from_static("user-agent"),
+                    //죄송합니다
+                    HeaderValue::from_static(USER_AGENT),
+                ),
+                (
+                    HeaderName::from_static("authorization"),
+                    HeaderValue::from_static(MAGIC_BEARER_TOKEN),
+                ),
+                (
+                    HeaderName::from_static("x-guest-token"),
+                    HeaderValue::from_str(&token.access_token).unwrap(),
+                ),
+            ]))
             .send()
             .await?;
         let response_code = response.status();
         let response_delay = instant.elapsed();
         let response_json = parse_successful_response::<Twitter>(response).await?;
         // Twitter does some really interesting stuff with how they present API data
-        let maybe_instruction = response_json.timeline.instructions.iter().find_map(|instruction| instruction.get("addEntries"));
+        let maybe_instruction = response_json
+            .timeline
+            .instructions
+            .iter()
+            .find_map(|instruction| instruction.get("addEntries"));
         let tweet_db = response_json.global_objects.tweets;
         let user_db = response_json.global_objects.users;
         let entries = match maybe_instruction {
             Some(Entries::AddEntries { entries }) => entries,
-            _ => return Err(ProviderFailure::Other("Could not find an 'addEntries' in instructions".to_owned())),
-        };
-        let posts = entries.iter().filter_map(|entry| {
-            let sort_index = &entry.sort_index;
-            if !entry.entry_id.starts_with("tweet-") {
-                return None;
+            _ => {
+                return Err(ProviderFailure::Other(
+                    "Could not find an 'addEntries' in instructions".to_owned(),
+                ))
             }
-            // a sort index corresponds to the id of the
-            // the chances of this being undefined is basically non-existent but we should be safe
-            let tweet = match tweet_db.get(sort_index) {
-                None => {
-                    error!("Could not find the corresponding tweet id for {} in the tweet db", sort_index);
+        };
+        let posts = entries
+            .iter()
+            .filter_map(|entry| {
+                let sort_index = &entry.sort_index;
+                if !entry.entry_id.starts_with("tweet-") {
                     return None;
                 }
-                Some(t) => t,
-            };
-            Some(tweet)
-        }).filter_map(|tweet| {
-            let unique_identifier = tweet.id_str.clone();
-            let like_count = tweet.favorite_count;
-            let retweet_count = tweet.retweet_count;
-            let language = tweet.lang.clone();
-            let post_date = DateTime::parse_from_rfc2822(&tweet.created_at)
-                .ok()
-                .map(|e| e.naive_utc());
-            let body = tweet.full_text.clone().map(|t| replace_twitter_string(&t));
-            tweet.entities.media.as_ref().map(|media| {
-                // very hacky disgusting way to get
-                // https://twitter.com/hf_dreamcatcher/status/1459831679107756039
-                // from
-                // https://twitter.com/hf_dreamcatcher/status/1459831679107756039/photo/1
-                // otherwise we have to do a lookup on the user global object which I'm too lazy for
-                let url = media.get(0).and_then(|media| {
-                    replace_twitter_string(&media.expanded_url)
-                        .split("/photo/")
-                        .collect::<Vec<_>>()
-                        .get(0)
-                        .map(|&e| e.to_owned())
-                });
-                let url = user_db.get(&tweet.user_id_str).map(|user| {
-                    format!("https://twitter.com/{}/status/{}", &user.screen_name, &unique_identifier)
-                });
-                ProviderPost {
-                    unique_identifier,
-                    metadata: serde_json::to_value(TwitterPostMetadata {
-                        like_count,
-                        retweet_count,
-                        language,
-                    }).ok(),
-                    url,
-                    post_date,
-                    images: media.into_iter().map(|media| {
-                        ProviderMedia {
-                            _type: twitter_type_to_provider(&media.media_type),
-                            unique_identifier: media.id_str.clone(),
-                            media_url: replace_twitter_string(&media.media_url_https),
-                            reference_url: Some(replace_twitter_string(&media.expanded_url)),
-                            metadata: serde_json::to_value(TwitterImageMetadata {
-                                height: media.original_info.height,
-                                width: media.original_info.width,
-                            }).ok(),
-                        }
-                    }).collect::<Vec<_>>(),
-                    body,
-                }
+                // a sort index corresponds to the id of the
+                // the chances of this being undefined is basically non-existent but we should be safe
+                let tweet = match tweet_db.get(sort_index) {
+                    None => {
+                        error!(
+                            "Could not find the corresponding tweet id for {} in the tweet db",
+                            sort_index
+                        );
+                        return None;
+                    }
+                    Some(t) => t,
+                };
+                Some(tweet)
             })
-        }).collect::<Vec<_>>();
+            .filter_map(|tweet| {
+                let unique_identifier = tweet.id_str.clone();
+                let like_count = tweet.favorite_count;
+                let retweet_count = tweet.retweet_count;
+                let language = tweet.lang.clone();
+                let post_date = DateTime::parse_from_rfc2822(&tweet.created_at)
+                    .ok()
+                    .map(|e| e.naive_utc());
+                let body = tweet.full_text.clone().map(|t| replace_twitter_string(&t));
+                tweet.entities.media.as_ref().map(|media| {
+                    // very hacky disgusting way to get
+                    // https://twitter.com/hf_dreamcatcher/status/1459831679107756039
+                    // from
+                    // https://twitter.com/hf_dreamcatcher/status/1459831679107756039/photo/1
+                    // otherwise we have to do a lookup on the user global object which I'm too lazy for
+                    let url = media.get(0).and_then(|media| {
+                        replace_twitter_string(&media.expanded_url)
+                            .split("/photo/")
+                            .collect::<Vec<_>>()
+                            .get(0)
+                            .map(|&e| e.to_owned())
+                    });
+                    let url = user_db.get(&tweet.user_id_str).map(|user| {
+                        format!(
+                            "https://twitter.com/{}/status/{}",
+                            &user.screen_name, &unique_identifier
+                        )
+                    });
+                    ProviderPost {
+                        unique_identifier,
+                        metadata: serde_json::to_value(TwitterPostMetadata {
+                            like_count,
+                            retweet_count,
+                            language,
+                        })
+                        .ok(),
+                        url,
+                        post_date,
+                        images: media
+                            .into_iter()
+                            .map(|media| ProviderMedia {
+                                _type: twitter_type_to_provider(&media.media_type),
+                                unique_identifier: media.id_str.clone(),
+                                media_url: replace_twitter_string(&media.media_url_https),
+                                reference_url: Some(replace_twitter_string(&media.expanded_url)),
+                                metadata: serde_json::to_value(TwitterImageMetadata {
+                                    height: media.original_info.height,
+                                    width: media.original_info.width,
+                                })
+                                .ok(),
+                            })
+                            .collect::<Vec<_>>(),
+                        body,
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
 
         let cursor_entry = &entries.last();
-        let cursor = cursor_entry.and_then(|c| c.content.operation.as_ref().map(|o| o.cursor.value.clone()));
+        let cursor =
+            cursor_entry.and_then(|c| c.content.operation.as_ref().map(|o| o.cursor.value.clone()));
+        let user_option = user_db.get(&state.id);
         let result = ProviderResult {
+            account: user_option
+                .map(|user| ProviderAccount {
+                    name: user.screen_name.clone(),
+                    avatar_url: user.profile_image_url_https.clone(),
+                })
+                .unwrap_or(ProviderAccount {
+                    name: "Unknown Twitter User".to_owned(),
+                    avatar_url: None,
+                }),
             posts,
             response_code,
             response_delay,
         };
         match cursor {
-            Some(cursor) => Ok(ProviderStep::Next(
-                result,
-                Pagination::NextCursor(cursor),
-            )),
-            None => Ok(ProviderStep::End(result))
+            Some(cursor) => Ok(ProviderStep::Next(result, Pagination::NextCursor(cursor))),
+            None => Ok(ProviderStep::End(result)),
         }
     }
 
     async fn login(&self) -> anyhow::Result<ProviderCredentials> {
-        let login = self.client.get(BASE_URL)
-            .headers(HeaderMap::from_iter([(HeaderName::from_static("user-agent"), HeaderValue::from_static(USER_AGENT))]))
+        let login = self
+            .client
+            .get(BASE_URL)
+            .headers(HeaderMap::from_iter([(
+                HeaderName::from_static("user-agent"),
+                HeaderValue::from_static(USER_AGENT),
+            )]))
             .send()
             .await?;
         let html = login.text().await?;
         let regex = Regex::new(r#"gt=(.*?);"#).unwrap();
         let captures = regex.captures(&html).unwrap();
-        let capture = captures.get(1).expect("Couldn't match a guest token in the twitter homepage, the site was changed");
+        let capture = captures
+            .get(1)
+            .expect("Couldn't match a guest token in the twitter homepage, the site was changed");
         Ok(ProviderCredentials {
             access_token: capture.as_str().to_owned(),
             refresh_token: "".to_owned(),
@@ -290,4 +330,3 @@ impl Provider for TwitterTimeline {
 //     let json = r#"{"answer": 42}"#;
 //     let model: [object Object] = serde_json::from_str(&json).unwrap();
 // }
-

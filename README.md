@@ -8,9 +8,11 @@
 
 ## Jiu
 
-Jiu is a multi-threaded media scraper capable of juggling thousands of endpoints from different providers with unique restrictions/requirements.
+Jiu is a multi-threaded media scraper capable of juggling thousands of endpoints from different providers with unique
+restrictions/requirements.
 
-It is built for the purpose of fetching media posted on different sites the form of a slow, eventual-consistency, and not for instant change detection.
+It is built for the purpose of fetching media posted on different sites the form of a slow, eventual-consistency, and
+not for instant change detection.
 
 ## Providers
 
@@ -30,20 +32,25 @@ provider.
 
 Dynamic priority is main idea behind how JiU can scrape many resources without getting rate limited.
 
-Unique endpoints that have more than 1 token are grouped by their provider type and get scheduled to be scraped at even intervals at the start of every day to avoid hammering APIs with requests.
+Unique endpoints that have more than 1 token are grouped by their provider type and get scheduled to be scraped at even
+intervals at the start of every day to avoid hammering APIs with requests.
 
 ![](./assets/scrape_interval.png)
 
-
-After each successful request, a 30 day sliding window of that endpoint's request history gets graded on a curve that determines how its priority should be changing based on how many new images it found in each request.
+After each successful request, a 30 day sliding window of that endpoint's request history gets graded on a curve that
+determines how its priority should be changing based on how many new images it found in each request.
 
 ![](./assets/scraping_history.png)
 
-Pages that post at least one image regularly get assigned a higher priority, up to a maximum of 3 requests every 2 days. Pages that don't post anything sink down to a scrape schedule of once every 2 weeks.
+Pages that post at least one image regularly get assigned a higher priority, up to a maximum of 3 requests every 2 days.
+Pages that don't post anything sink down to a scrape schedule of once every 2 weeks.
 
-New results found in earlier dates have a higher contribution to priority than those found further back. This curve allows JiU to match its request frequency with the changing posting schedule of sites it's processing to avoid wasting requests on resources that are rarely updated.
+New results found in earlier dates have a higher contribution to priority than those found further back. This curve
+allows JiU to match its request frequency with the changing posting schedule of sites it's processing to avoid wasting
+requests on resources that are rarely updated.
 
-At the end of each day, every endpoint gets tokens added to it equal to its current priority that get checked as a criteria when scheduling requests the next day.
+At the end of each day, every endpoint gets tokens added to it equal to its current priority that get checked as a
+criteria when scheduling requests the next day.
 
 ## Authorization
 
@@ -58,7 +65,7 @@ The login flow is reverse engineered for providers that don't have a public API.
 > Juggling multiple accounts per provider is currently not supported and probably won't be as long as your accounts aren't getting banned (and if they are then you're sending too many requests and need to increase your rate limits).
 
 Jiu will try its best to identify itself in its requests' `User-Agent` header, but will submit a fake UA for providers
-that gate posts behind a user agent check (currently none).
+that gate posts behind a user agent check like Twitter.
 
 ## Proxies
 
@@ -68,32 +75,51 @@ Proxies are not supported or needed.
 
 Jiu is capable of sending webhooks to multiple destinations when an update for a provider is detected.
 
+Although data about posts are aggregated within webhooks, they're not persisted to the database as that's the responsibility of the service receiving the events and are not relevant for image aggregation.
+
 ```json
 {
   "provider": {
-    "type": "weverse.artist_feed",
-    "id": "14",
-    "page": "https://weverse.io/dreamcatcher/artist",
+    "type": "twitter.timeline",
+    "id": "729935154290925570",
     "ephemeral": false
   },
-  "media": [
+  "posts": [
     {
-      "type": "image",
-      "media_url": "https://cdn-contents-web.weverse.io/user/xlx2048/jpg/8a0561f034564758b77551745d7d62c6349.jpg",
-      "page_url": "https://weverse.io/dreamcatcher/artist/1666051913313967?photoId=216521736",
-      "post_date": "2021-07-23T01:30:21Z",
-      "reference_url": "https://weverse.io/dreamcatcher/artist/1666051913313967?photoId=216521736",
-      "unique_identifier": "216521736",
-      "provider_metadata": {
-        "author_id": 61,
-        "author_name": "지유",
-        "height": 1920,
-        "width": 2443,
-        "thumbnail_url": "https://cdn-contents-web.weverse.io/user/mx750/jpg/8a0561f034564758b77551745d7d62c6349.jpg"
-      }
+      "unique_identifier": "1460196926796623873",
+      "body": "[#가현] 삐뚤빼뚤 즐거운 라이브였다❣️ 다음 주에도 재밌는 시간 보내 보카?\n\n#드림캐쳐 #Dreamcatcher #4주_집콕_프로젝트 https://t.co/r1ImPUPKkv",
+      "url": "https://twitter.com/hf_dreamcatcher/status/1460196926796623873",
+      "post_date": null,
+      "metadata": {
+        "language": "ko",
+        "like_count": 12474,
+        "retweet_count": 2760
+      },
+      "images": [
+        {
+          "type": "Image",
+          "media_url": "https://pbs.twimg.com/media/FEOpVKmagAELmzI.jpg",
+          "reference_url": "https://twitter.com/hf_dreamcatcher/status/1460196926796623873/photo/1",
+          "unique_identifier": "1460196885285994497",
+          "metadata": {
+            "width": 1128,
+            "height": 1504
+          }
+        },
+        {
+          "type": "Image",
+          "media_url": "https://pbs.twimg.com/media/FEOpV2FaAAEG4zr.jpg",
+          "reference_url": "https://twitter.com/hf_dreamcatcher/status/1460196926796623873/photo/2",
+          "unique_identifier": "1460196896958709761",
+          "metadata": {
+            "width": 1128,
+            "height": 1504
+          }
+        }
+      ]
     }
   ]
-},
+}
 ```
 
 Every provider has its own `provider_metadata` field that _may_ contain extra information about the image or the post it
@@ -101,7 +127,8 @@ was found under, but may also be missing. _Documentation WIP_
 
 The `unique_identifier` field is unique **per provider** and not globally.
 
-The `ephemeral` field defines whether an image is only accessible for a short period after dispatch (for example instagram image links expire after some time).
+The `ephemeral` field defines whether an image is only accessible for a short period after dispatch (for example
+instagram image links expire after some time).
 
 If a Discord webhook URL is detected, the payload is changed to allow Discord to display the images in the channel.
 

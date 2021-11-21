@@ -5,6 +5,12 @@ use std::fmt::Display;
 use std::time::Duration;
 
 #[derive(Debug)]
+pub struct AMQPDestination {
+    pub id: i32,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug)]
 pub struct DatabaseWebhook {
     pub id: i32,
     pub destination: String,

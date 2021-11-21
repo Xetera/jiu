@@ -10,15 +10,15 @@
 //     let json = r#"{"answer": 42}"#;
 //     let model: [object Object] = serde_json::from_str(&json).unwrap();
 // }
+use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use serde::de::IgnoredAny;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TwitterPostMetadata {
     pub(crate) language: Option<String>,
     pub(crate) like_count: Option<i64>,
-    pub(crate) retweet_count: Option<i64>
+    pub(crate) retweet_count: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -272,7 +272,7 @@ pub struct User {
     // pub(crate) geo_enabled: Option<bool>,
     // pub(crate) statuses_count: i64,
     // pub(crate) media_count: i64,
-    // pub(crate) profile_image_url_https: String,
+    pub(crate) profile_image_url_https: Option<String>,
     // pub(crate) profile_banner_url: Option<String>,
     // pub(crate) profile_image_extensions: ProfileExtensions,
     // pub(crate) profile_banner_extensions: Option<ProfileExtensions>,
@@ -328,8 +328,10 @@ pub struct Timeline {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Entries {
-    #[serde(rename="addEntries")]
-    AddEntries { entries: Vec<Entry> },
+    #[serde(rename = "addEntries")]
+    AddEntries {
+        entries: Vec<Entry>,
+    },
     Other(serde_json::Value),
 }
 
@@ -618,4 +620,3 @@ pub enum EncodedFeedbackRequest {
 pub enum FeedbackType {
     RichBehavior,
 }
-

@@ -17,8 +17,8 @@ use crate::{
     scraper::{AllProviders, ScopedProvider},
 };
 
-const SCHEDULER_START_MILLISECONDS: u64 = 1000 * 30; // 1000 * 3;
-const SCHEDULER_END_MILLISECONDS: u64 = 8.64e7 as u64; // 1000 * 10; //
+const SCHEDULER_START_MILLISECONDS: u64 = 1000 * 3; // 1000 * 30;
+const SCHEDULER_END_MILLISECONDS: u64 = 1000 * 10; // 8.64e7 as u64;
 
 /// We only want to scrape one single endpoint at most 3 times a day
 const MAX_DAILY_SCRAPE_COUNT: i32 = 3;
@@ -100,22 +100,6 @@ pub async fn pending_scrapes(db: &Database) -> anyhow::Result<Vec<PendingProvide
     Ok(out)
 }
 
-pub async fn mark_as_scheduled(
-    db: &Database,
-    pp: &PendingProvider,
-    running_providers: &RwLock<RunningProviders>,
-) -> anyhow::Result<()> {
-    sqlx::query!(
-        "UPDATE provider_resource SET last_queue = NOW() WHERE id = $1",
-        pp.id
-    )
-    .fetch_optional(db)
-    .await?;
-    let mut handle = running_providers.write();
-    handle.insert(pp.provider.clone());
-    Ok(())
-}
-
 /// Vec length is equal to the length of the items passed in
 fn interpolate_dates(
     item_count: usize,
@@ -190,10 +174,6 @@ pub async fn update_priorities(db: &Database, sp: &Vec<PendingProvider>) -> anyh
             .collect::<Vec<ScrapeHistory>>();
 
         if !histories.is_empty() {
-            println!(
-                "HISTORY == {:?}",
-                histories.iter().map(|a| a.result_count).collect::<Vec<_>>()
-            );
             let provider_priority = Priority::unchecked_clamp(priority.to_f32().unwrap());
             let next_priority = provider_priority.next(&histories[..]);
             // continue;

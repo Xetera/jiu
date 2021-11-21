@@ -1,9 +1,10 @@
-use num_traits::FromPrimitive;
-use sqlx::types::BigDecimal;
 use std::{
     convert::{TryFrom, TryInto},
     time::Duration,
 };
+
+use num_traits::FromPrimitive;
+use sqlx::types::BigDecimal;
 
 use crate::{models::ScrapeHistory, scheduler::MIN_PRIORITY};
 
@@ -15,16 +16,6 @@ pub struct InvalidPriority(f32);
 #[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Hash)]
 pub struct Priority {
     pub level: BigDecimal,
-}
-
-const HOURS_BY_SECS: u64 = 60 * 60;
-
-const fn hours(num: u64) -> Duration {
-    Duration::from_secs(HOURS_BY_SECS * num)
-}
-
-const fn days(num: u64) -> Duration {
-    Duration::from_secs(HOURS_BY_SECS * 24 * num)
 }
 
 impl From<f32> for Priority {
@@ -51,8 +42,6 @@ const MAX_RESULT_CONTRIBUTION: u32 = 3;
 impl Priority {
     /// Decide the next priority based on the the recent scrape history of the
     /// provider priority.
-    /// This function specifically borrows self as the result is compared with self
-    /// to detect change
     pub fn next(&self, history: &[ScrapeHistory]) -> Self {
         if history.is_empty() {
             return Self {
@@ -119,7 +108,7 @@ mod tests {
         let n = prio.next(&[hist.clone(), hist.clone(), hist.clone(), hist.clone()]);
         assert_eq!(n.level, BigDecimal::from_f32(MAX_PRIORITY).unwrap());
 
-        let n = prio.next(&(0..15).map(|_| hist.clone()).collect::<Vec<_>>());
+        let n = prio.next(&(0..15).map(|_| make_hist(1)).collect::<Vec<_>>());
         assert_eq!(n.level, BigDecimal::from_f32(MAX_PRIORITY).unwrap());
 
         let n = prio.next(&(0..15).map(|_| make_hist(0)).collect::<Vec<_>>());
