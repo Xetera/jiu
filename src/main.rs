@@ -29,6 +29,7 @@ async fn iter(
     provider: &dyn Provider,
 ) -> anyhow::Result<()> {
     let sp = pending.provider.clone();
+    trace!("Getting latest media");
     let latest_data = latest_media_ids_from_provider(&ctx.db, &sp).await?;
     let _is_first_scrape = !latest_data.is_empty();
     let step = ScrapeRequestInput {
@@ -36,6 +37,7 @@ async fn iter(
         default_name: pending.default_name.clone(),
         last_scrape: pending.last_scrape,
     };
+    trace!("Scraping");
     let mut result = scrape(&sp, &*provider, &step).await?;
 
     let webhooks = webhooks_for_provider(&ctx.db, &sp).await?;
@@ -74,6 +76,7 @@ async fn job_loop(ctx: Arc<Context>) {
         .await
         .expect("Could not successfully initialize a provider map");
     let arc_db = Arc::clone(&ctx.db);
+    trace!("Getting pending scrapes");
     let pendings = match pending_scrapes(&arc_db).await {
         Err(error) => {
             println!("{:?}", error);
@@ -81,12 +84,13 @@ async fn job_loop(ctx: Arc<Context>) {
         }
         Ok(result) => result,
     };
+    trace!("Getting pending scrapes");
     if let Some(err) = update_priorities(&arc_db, &pendings).await.err() {
         // should an error here be preventing the scrape?
         // Could end up spamming a provider if it's stuck at a high value
         error!("{:?}", err);
     };
-    println!("{:?}", pendings);
+    trace!("Preparing to scrape {} pending providers", pendings.len());
 
     let this_scrape = pendings.iter().map(|p| Arc::new(p)).map(|pending| async {
         let pp = pending;
@@ -122,10 +126,7 @@ async fn setup() -> anyhow::Result<()> {
     let db = Arc::new(connect().await?);
     let client = Arc::new(Client::new());
     let amqp = Arc::new(match env::var("AMQP_URL") {
-        Ok(a) => {
-            println!("{:?}", a);
-            Some(AMQPDispatcher::from_connection_string(&a).await.unwrap())
-        }
+        Ok(a) => Some(AMQPDispatcher::from_connection_string(&a).await.unwrap()),
         Err(_) => None,
     });
     info!("Starting JiU");

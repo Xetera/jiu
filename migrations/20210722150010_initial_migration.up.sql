@@ -1,10 +1,10 @@
 -- Add up migration script here
 CREATE TABLE IF NOT EXISTS webhook(
   id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  destination TEXT NOT NULL UNIQUE,
+  destination TEXT NOT NULL,
   created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
-  -- extra data attached to a dispatcher invocation
+  -- extra data attached to a webhook invocation
   metadata JSONB
 );
 
@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS scrape(
   provider_destination TEXT,
   -- the priority this scrape was executed against
   priority INTEGER NOT NULL CHECK(priority >= 1 AND priority <= 10),
-  scraped_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
   FOREIGN KEY (provider_name, provider_destination)
     REFERENCES provider_resource(name, destination) ON DELETE SET NULL ON UPDATE CASCADE
 );
