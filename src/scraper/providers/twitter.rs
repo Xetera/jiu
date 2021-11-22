@@ -3,8 +3,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
-use chrono::DateTime;
 use chrono::NaiveDateTime;
+use chrono::{DateTime, FixedOffset, ParseResult};
 use governor::Quota;
 use log::error;
 use regex::Regex;
@@ -29,6 +29,10 @@ fn twitter_type_to_provider(media_type: &Type) -> ProviderMediaType {
 
 fn replace_twitter_string(s: &str) -> String {
     s.replace("\\/", "/")
+}
+
+fn parse_twitter_date(date_str: &str) -> ParseResult<DateTime<FixedOffset>> {
+    DateTime::parse_from_str(date_str, "%a %b %d %H:%M:%S %z %Y")
 }
 
 pub struct TwitterTimeline {
@@ -198,7 +202,7 @@ impl Provider for TwitterTimeline {
                 let like_count = tweet.favorite_count;
                 let retweet_count = tweet.retweet_count;
                 let language = tweet.lang.clone();
-                let post_date = DateTime::parse_from_rfc2822(&tweet.created_at)
+                let post_date = parse_twitter_date(&tweet.created_at)
                     .ok()
                     .map(|e| e.naive_utc());
                 let body = tweet.full_text.clone().map(|t| replace_twitter_string(&t));

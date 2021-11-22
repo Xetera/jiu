@@ -148,7 +148,7 @@ There is currently no retry mechanism for webhooks that fail to deliver successf
 
 * For slowly monitoring changes in different feeds over the course of multiple hours without abusing the provider.
 * Capable of adjusting the frequency of scrapes based on how frequently the source is updated.
-* Able to send webhooks to different sites like Discord for automatic updates.
+* Able to send webhooks or push to AMQP on discovery.
 * The lead singer of [Dreamcatcher](https://www.youtube.com/watch?v=1QD0FeZyDtQ).
 
 ## Usage
