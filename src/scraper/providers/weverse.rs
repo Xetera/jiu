@@ -52,9 +52,9 @@ async fn get_public_key(client: &Client) -> anyhow::Result<RSAPublicKey> {
     let der_encoded = rsa_key
         .replace("\\n", "\n")
         .lines()
-        .filter(|line| !line.starts_with("-"))
+        .filter(|line| !line.starts_with('-'))
         .fold(String::new(), |mut data, line| {
-            data.push_str(&line);
+            data.push_str(line);
             data
         });
 
@@ -66,7 +66,7 @@ async fn get_public_key(client: &Client) -> anyhow::Result<RSAPublicKey> {
 fn encrypted_password(password: String, public_key: RSAPublicKey) -> anyhow::Result<String> {
     let mut rng = OsRng;
     let padding = PaddingScheme::new_oaep::<Sha1>();
-    let encrypted = public_key.encrypt(&mut rng, padding, &password.as_bytes())?;
+    let encrypted = public_key.encrypt(&mut rng, padding, password.as_bytes())?;
     Ok(base64::encode(encrypted))
 }
 
@@ -120,9 +120,9 @@ pub async fn fetch_weverse_auth_token(
         }
         (_, Ok(email), Ok(password)) => {
             info!("Detected weverse credentials, attempting to login...");
-            let public_key = get_public_key(&client).await?;
+            let public_key = get_public_key(client).await?;
             let encrypted = encrypted_password(password, public_key)?;
-            let token = get_access_token(email, encrypted, &client).await?;
+            let token = get_access_token(email, encrypted, client).await?;
             Ok(Some(ProviderCredentials {
                 access_token: token.access_token,
                 refresh_token: token.refresh_token,
@@ -233,7 +233,6 @@ fn url_from_post(artist_id: u32, post_id: u64, photo_id: u64) -> String {
         "https://weverse.io/{}/artist/{}?photoId={}",
         artist_name, post_id, photo_id
     )
-    .to_owned()
 }
 
 const MAX_PAGESIZE: usize = 30;
@@ -334,8 +333,7 @@ impl Provider for WeverseArtistFeed {
             Some(token) => token.access_token,
             None => return Ok(ProviderStep::NotInitialized),
         };
-        // .refresh_token
-        // .clone();
+
         let instant = Instant::now();
         let response = self
             .client
@@ -358,7 +356,7 @@ impl Provider for WeverseArtistFeed {
                 let author_name = user.profile_nickname;
                 let author_id = user.artist_id;
                 let post_created_at = post.created_at;
-                let photos = post.photos.unwrap_or(vec![]);
+                let photos = post.photos.unwrap_or_default();
                 let page_url = photos
                     .get(0)
                     .map(|photo| url_from_post(community_id, post_id, photo.id));
@@ -370,7 +368,7 @@ impl Provider for WeverseArtistFeed {
                     unique_identifier: post_id.to_string(),
                     metadata: serde_json::to_value(PostMetadata {
                         author_id,
-                        author_name: author_name.clone(),
+                        author_name,
                     })
                     .ok(),
                     body: post.body,
@@ -388,7 +386,7 @@ impl Provider for WeverseArtistFeed {
                                 metadata: serde_json::to_value(ImageMetadata {
                                     height: photo.org_img_height,
                                     width: photo.org_img_width,
-                                    thumbnail_url: photo.thumbnail_img_url.clone(),
+                                    thumbnail_url: photo.thumbnail_img_url,
                                 })
                                 .ok(),
                             }

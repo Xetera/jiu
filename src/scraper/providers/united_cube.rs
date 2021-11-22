@@ -110,10 +110,7 @@ fn extract_url_and_id(path: &str, base_url: &url::Url) -> anyhow::Result<(url::U
     let unique_identifier = Path::new(&parsed_relative_url)
         .file_stem()
         .and_then(|str| str.to_str().map(|result| result.to_owned()))
-        .ok_or(anyhow::anyhow!(
-            "Invalid file format: {}",
-            parsed_relative_url
-        ))?;
+        .ok_or_else(|| anyhow::anyhow!("Invalid file format: {}", parsed_relative_url))?;
     Ok((url, unique_identifier))
 }
 
@@ -179,7 +176,7 @@ impl Provider for UnitedCubeArtistFeed {
     ) -> Result<ScrapeUrl, ProviderFailure> {
         // club_id|board_id
         let page_id = id.to_string();
-        let parts = page_id.split("|").collect::<Vec<_>>();
+        let parts = page_id.split('|').collect::<Vec<_>>();
         let board = parts.get(1).unwrap();
         let mut next_url: UrlBuilder = Default::default();
         next_url.params.push(("board", board.to_string()));
@@ -234,7 +231,7 @@ impl Provider for UnitedCubeArtistFeed {
                     url: None,
                     // This is HTML but who cares
                     body: post.content,
-                    post_date: Some(post.register_datetime.naive_utc().clone()),
+                    post_date: Some(post.register_datetime.naive_utc()),
                     metadata: None,
                     images:
                     post.media

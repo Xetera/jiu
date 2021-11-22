@@ -1,7 +1,4 @@
-use std::{
-    convert::{TryFrom, TryInto},
-    time::Duration,
-};
+use std::convert::TryInto;
 
 use num_traits::FromPrimitive;
 use sqlx::types::BigDecimal;
@@ -24,11 +21,6 @@ impl From<f32> for Priority {
             level: BigDecimal::from_f32(level).unwrap(),
         }
     }
-}
-
-enum PriorityChange {
-    Up,
-    Down,
 }
 
 impl Default for Priority {
@@ -105,7 +97,7 @@ mod tests {
             result_count: count,
         };
         let hist = make_hist(1);
-        let n = prio.next(&[hist.clone(), hist.clone(), hist.clone(), hist.clone()]);
+        let n = prio.next(&[hist.clone(), hist.clone(), hist.clone(), hist]);
         assert_eq!(n.level, BigDecimal::from_f32(MAX_PRIORITY).unwrap());
 
         let n = prio.next(&(0..15).map(|_| make_hist(1)).collect::<Vec<_>>());

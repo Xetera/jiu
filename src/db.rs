@@ -327,7 +327,7 @@ pub async fn latest_requests(
             media: media_map
                 .get(&result.scrape_id)
                 .unwrap_or(&vec![])
-                .into_iter()
+                .iter()
                 .filter_map(|m| {
                     if m.scrape_id.unwrap() == result.scrape_id {
                         Some(ScrapeRequestMedia {

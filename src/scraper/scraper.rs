@@ -4,13 +4,15 @@ use async_recursion::async_recursion;
 use chrono::{NaiveDateTime, Utc};
 use futures::StreamExt;
 use log::{debug, info, trace};
-use crate::models::PendingProvider;
 
-use crate::scraper::{ProviderMedia, ProviderPost, providers::{CredentialRefresh, ProviderErrorHandle}};
+use crate::scraper::{
+    providers::{CredentialRefresh, ProviderErrorHandle},
+    ProviderPost,
+};
 
 use super::{
-    ProviderCredentials,
-    ProviderResult, providers::{Provider, ProviderFailure, ProviderState, ProviderStep, ScrapeRequestInput}, ScopedProvider,
+    providers::{Provider, ProviderFailure, ProviderState, ProviderStep, ScrapeRequestInput},
+    ProviderCredentials, ProviderResult, ScopedProvider,
 };
 
 #[derive(Debug)]
@@ -109,11 +111,8 @@ async fn request_page<'a>(
             let page_size = provider.next_page_size(input.last_scrape, iteration);
 
             let id = sp.destination.clone();
-            let maybe_next_url = provider.from_provider_destination(
-                &id,
-                page_size.clone(),
-                Some(pagination.clone()),
-            );
+            let maybe_next_url =
+                provider.from_provider_destination(&id, page_size, Some(pagination.clone()));
 
             match maybe_next_url {
                 Err(err) => error_step(err),
@@ -121,8 +120,8 @@ async fn request_page<'a>(
                     let next_state = ProviderState {
                         id,
                         default_name: input.default_name.clone(),
-                        url: url.clone(),
-                        pagination: Some(pagination.clone()),
+                        url,
+                        pagination: Some(pagination),
                         iteration: iteration + 1,
                     };
                     (InternalScraperStep::Data(result), Some(next_state))
@@ -155,7 +154,7 @@ pub async fn scrape<'a>(
         info!("Scraping URL: {:?}", state.url.0);
         Some(request_page(sp, provider, &state, input).await)
     })
-        .boxed_local();
+    .boxed_local();
 
     let mut scrape_requests: Vec<ScrapeRequest> = vec![];
     let scrape_start = Instant::now();
@@ -173,12 +172,15 @@ pub async fn scrape<'a>(
                 break;
             }
             InternalScraperStep::Data(page) => {
-                let total_found_images = page.posts.iter().flat_map(|p| &p.images).collect::<Vec<_>>().len();
+                let total_found_images = page.posts.iter().flat_map(|p| &p.images).count();
                 let mut posts: Vec<ProviderPost> = vec![];
                 // it SHOULDN'T be possible for us to have seen a post and only
                 // have it partially saved... This should be good enough
                 for post in page.posts {
-                    let has_known_image = post.images.iter().any(|image| input.latest_data.contains(&image.unique_identifier));
+                    let has_known_image = post
+                        .images
+                        .iter()
+                        .any(|image| input.latest_data.contains(&image.unique_identifier));
                     if has_known_image {
                         break;
                     }
@@ -223,7 +225,7 @@ pub async fn scrape<'a>(
         if scrape_count != 1 { "s" } else { "" }
     );
     Ok(Scrape {
-        provider: &sp,
+        provider: sp,
         requests: scrape_requests,
     })
 }

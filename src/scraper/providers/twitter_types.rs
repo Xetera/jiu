@@ -10,7 +10,6 @@
 //     let json = r#"{"answer": 42}"#;
 //     let model: [object Object] = serde_json::from_str(&json).unwrap();
 // }
-use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -256,7 +255,7 @@ pub struct SelfThread {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct User {
     pub(crate) id_str: String,
-    // pub(crate) name: String,
+    pub(crate) name: String,
     pub(crate) screen_name: String,
     // pub(crate) location: String,
     // pub(crate) description: String,

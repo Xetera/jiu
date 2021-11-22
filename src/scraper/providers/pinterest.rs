@@ -1,4 +1,3 @@
-use std::time::Duration;
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use async_trait::async_trait;
@@ -7,7 +6,6 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::request::HttpError;
 use crate::{
     request::{parse_successful_response, request_default_headers},
     scheduler::UnscopedLimiter,
@@ -205,7 +203,7 @@ impl Provider for PinterestBoardFeed {
             response_delay,
         };
 
-        let bookmark_option = response_json.resource_response.bookmark.clone();
+        let bookmark_option = response_json.resource_response.bookmark;
         // we receive a bookmark when there are more images to scrape
         Ok(match bookmark_option {
             Some(bookmark) => ProviderStep::Next(result, Pagination::NextCursor(bookmark)),

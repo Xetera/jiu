@@ -5,9 +5,8 @@ use async_trait::async_trait;
 use chrono::NaiveDateTime;
 use governor::{Jitter, Quota, RateLimiter};
 use log::{debug, error, info};
-use nonzero_ext::nonzero;
 use parking_lot::RwLock;
-use reqwest::{Client, IntoUrl, StatusCode, Url};
+use reqwest::{Client, StatusCode};
 use serde;
 use serde::{Deserialize, Serialize};
 use strum_macros;
@@ -226,7 +225,7 @@ pub fn create_credentials<T>() -> Arc<RwLock<Option<T>>> {
 pub async fn attempt_first_login(
     provider: &dyn Provider,
     credentials: &SharedCredentials<ProviderCredentials>,
-) -> () {
+) {
     let id = provider.id().to_string();
     info!("Attempting login to {}", &id);
     let login = provider.login().await;
@@ -252,9 +251,7 @@ pub trait Provider: Sync + Send + RateLimitable {
     fn new(input: ProviderInput) -> Self
     where
         Self: Sized;
-    async fn initialize(&self) -> () {
-        ()
-    }
+    async fn initialize(&self) {}
 
     fn requires_auth(&self) -> bool {
         false
@@ -390,9 +387,9 @@ impl UrlBuilder {
         self
     }
     pub fn build(&self, base_url: &str) -> Result<url::Url, ProviderFailure> {
-        Ok(url::Url::parse_with_params(base_url, self.params.iter())
+        url::Url::parse_with_params(base_url, self.params.iter())
             .ok()
-            .ok_or(ProviderFailure::Url)?)
+            .ok_or(ProviderFailure::Url)
     }
     pub fn build_scrape_url(self, base_url: &str) -> Result<ScrapeUrl, ProviderFailure> {
         let res = self.build(base_url)?;

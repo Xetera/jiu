@@ -90,6 +90,10 @@ Although data about posts are aggregated within webhooks, they're not persisted 
       "body": "[#가현] 삐뚤빼뚤 즐거운 라이브였다❣️ 다음 주에도 재밌는 시간 보내 보카?\n\n#드림캐쳐 #Dreamcatcher #4주_집콕_프로젝트 https://t.co/r1ImPUPKkv",
       "url": "https://twitter.com/hf_dreamcatcher/status/1460196926796623873",
       "post_date": null,
+      "account": {
+        "name":"드림캐쳐 Dreamcatcher",
+        "avatar_url":"https://pbs.twimg.com/profile_images/1415983453200261124/4-viIm27_normal.jpg"
+      },
       "metadata": {
         "language": "ko",
         "like_count": 12474,

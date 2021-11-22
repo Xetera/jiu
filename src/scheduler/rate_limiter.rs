@@ -1,10 +1,8 @@
 use governor::{
     clock::QuantaClock,
     state::{DirectStateStore, InMemoryState, NotKeyed},
-    Jitter, Quota, RateLimiter,
+    RateLimiter,
 };
-use nonzero_ext::nonzero;
-use std::{sync::Arc, time::Duration};
 
 /// Most providers use rate limiter at the domain level and not at the page level
 /// in order to prevent exceeding rate limits imposed by webservers
@@ -16,5 +14,3 @@ pub type ScopedLimiter = RateLimiter<dyn DirectStateStore, InMemoryState, Quanta
 
 /// Global rate limiting wrapper for limits imposed on individual providers being run concurrently
 pub struct GlobalRateLimiter(UnscopedLimiter);
-
-const PROVIDER_PROCESSING_LIMIT: u32 = 8;

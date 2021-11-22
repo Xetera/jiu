@@ -1,17 +1,15 @@
 use std::iter::FromIterator;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use async_trait::async_trait;
 use chrono::DateTime;
 use chrono::NaiveDateTime;
 use governor::Quota;
 use log::error;
-use num_traits::identities;
 use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
 
 use crate::request::{parse_successful_response, HttpError};
 use crate::scheduler::UnscopedLimiter;
@@ -80,8 +78,8 @@ impl Provider for TwitterTimeline {
         attempt_first_login(self, &self.guest_token).await;
     }
 
-    fn next_page_size(&self, last_scraped: Option<NaiveDateTime>, iteration: usize) -> PageSize {
-        PageSize(if iteration >= 1 { 100 } else { 20 })
+    fn next_page_size(&self, _last_scraped: Option<NaiveDateTime>, _iteration: usize) -> PageSize {
+        PageSize(100)
     }
     fn from_provider_destination(
         &self,
@@ -210,13 +208,6 @@ impl Provider for TwitterTimeline {
                     // from
                     // https://twitter.com/hf_dreamcatcher/status/1459831679107756039/photo/1
                     // otherwise we have to do a lookup on the user global object which I'm too lazy for
-                    let url = media.get(0).and_then(|media| {
-                        replace_twitter_string(&media.expanded_url)
-                            .split("/photo/")
-                            .collect::<Vec<_>>()
-                            .get(0)
-                            .map(|&e| e.to_owned())
-                    });
                     let user_option = user_db.get(&tweet.user_id_str);
                     let url = user_option.map(|user| {
                         format!(
@@ -227,7 +218,7 @@ impl Provider for TwitterTimeline {
                     ProviderPost {
                         account: user_option
                             .map(|user| ProviderAccount {
-                                name: user.screen_name.clone(),
+                                name: user.name.clone(),
                                 avatar_url: user.profile_image_url_https.clone(),
                             })
                             .unwrap_or_default(),
@@ -241,7 +232,7 @@ impl Provider for TwitterTimeline {
                         url,
                         post_date,
                         images: media
-                            .into_iter()
+                            .iter()
                             .map(|media| ProviderMedia {
                                 _type: twitter_type_to_provider(&media.media_type),
                                 unique_identifier: media.id_str.clone(),
@@ -307,7 +298,7 @@ impl Provider for TwitterTimeline {
                     Ok(ProviderErrorHandle::Halt)
                 }
             }
-            error @ _ => {
+            error => {
                 error!("{:?}", error);
                 Ok(ProviderErrorHandle::Halt)
             }

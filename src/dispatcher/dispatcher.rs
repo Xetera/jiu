@@ -9,7 +9,7 @@ use crate::{
     request::{request_default_headers, HttpError},
     scraper::{
         scraper::{Scrape, ScraperStep},
-        AllProviders, ProviderMedia, ProviderPost,
+        AllProviders, ProviderPost,
     },
 };
 
@@ -59,7 +59,7 @@ impl DispatchablePayload {
             .collect::<Vec<_>>();
         DispatchablePayload {
             provider: DispatchablePayloadProviderInfo {
-                _type: scrape.provider.name.clone(),
+                _type: scrape.provider.name,
                 id: scrape.provider.destination.clone(),
                 ephemeral: provider.ephemeral(),
             },
@@ -86,7 +86,6 @@ pub async fn dispatch_webhooks<'a>(
     // let discord_media = &posts[0..min(image_length, DISCORD_IMAGE_DISPLAY_LIMIT)];
     let ref_cell = RwLock::new(&mut results);
     let iter = |(wh, payload): (DatabaseWebhook, DispatchablePayload)| {
-        let pl = payload.clone();
         let f = ref_cell.write();
         async move {
             let builder = client
@@ -95,18 +94,16 @@ pub async fn dispatch_webhooks<'a>(
             let instant = Instant::now();
             if let WebhookDestination::Custom = webhook_type(&wh.destination) {
                 let response = builder
-                    .json(&pl)
+                    .json(&payload)
                     .send()
                     .await
-                    .map_err(|err| HttpError::ReqwestError(err));
+                    .map_err(HttpError::ReqwestError);
                 let response_time = instant.elapsed();
                 f.unwrap().push(WebhookInteraction {
                     webhook: wh,
                     response,
                     response_time,
                 });
-            } else {
-                ()
             }
         }
     };

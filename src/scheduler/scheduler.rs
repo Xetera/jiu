@@ -1,15 +1,11 @@
-use std::ops::{Add, Div, Sub};
+use std::ops::Add;
 use std::time::Duration;
 use std::{collections::HashSet, convert::TryInto, hash::Hash, iter::FromIterator, str::FromStr};
 
-use chrono::{DateTime, Utc};
-use futures::StreamExt;
 use itertools::{unfold, Itertools};
 use log::info;
-use num_traits::cast::{FromPrimitive, ToPrimitive};
-use parking_lot::RwLock;
+use num_traits::cast::ToPrimitive;
 use rand::Rng;
-use sqlx::types::BigDecimal;
 
 use crate::{
     db::Database,
@@ -150,7 +146,7 @@ fn interpolate_dates(
     .collect::<Vec<_>>()
 }
 
-pub async fn update_priorities(db: &Database, sp: &Vec<PendingProvider>) -> anyhow::Result<()> {
+pub async fn update_priorities(db: &Database, sp: &[PendingProvider]) -> anyhow::Result<()> {
     let providers = sqlx::query!(
         "SELECT
             pr.id,
@@ -236,8 +232,8 @@ pub async fn update_priorities(db: &Database, sp: &Vec<PendingProvider>) -> anyh
     Ok(())
 }
 
-pub fn maximize_distance<T: Hash + Eq + Clone>(items: &Vec<T>, quality: fn(&[T]) -> f32) -> Vec<T> {
-    let mut out = items.clone();
+pub fn maximize_distance<T: Hash + Eq + Clone>(items: &[T], quality: fn(&[T]) -> f32) -> Vec<T> {
+    let mut out = items.to_owned();
     let mut no_improvement = 0;
     let mut best = 0f32;
     let mut rng = rand::thread_rng();
@@ -292,7 +288,7 @@ mod tests {
     #[test]
     fn spacing_test() {
         assert_eq!(
-            maximize_distance(&vec![1, 1, 1, 2, 2], quality_maxmindist),
+            maximize_distance(&[1, 1, 1, 2, 2], quality_maxmindist),
             &[1, 2, 1, 2, 1],
         );
     }

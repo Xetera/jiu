@@ -1,8 +1,6 @@
 use std::env;
 use std::{error::Error, sync::Arc, time::Duration};
 
-use actix_web;
-// use actix_web;
 use futures::future::join_all;
 use log::{debug, error, info, trace};
 use reqwest::Client;
@@ -64,7 +62,7 @@ async fn iter(
         None
     };
     // process scraping MUST come after dispatcher dispatching since it mutates the array by reversing it
-    let processed_scrape = process_scrape(&ctx.db, &mut result, &pending).await?;
+    let processed_scrape = process_scrape(&ctx.db, &mut result, pending).await?;
     if webhook_interactions.is_some() {
         submit_webhook_responses(&ctx.db, processed_scrape, webhook_interactions.unwrap()).await?
     }
@@ -92,16 +90,15 @@ async fn job_loop(ctx: Arc<Context>) {
     };
     trace!("Preparing to scrape {} pending providers", pendings.len());
 
-    let this_scrape = pendings.iter().map(|p| Arc::new(p)).map(|pending| async {
+    let this_scrape = pendings.iter().map(Arc::new).map(|pending| async {
         let pp = pending;
-        let sleep_time = pp.scrape_date.clone();
+        let sleep_time = pp.scrape_date;
         tokio::time::sleep(sleep_time).await;
         if let Err(err) = run(Arc::clone(&ctx), &pp, &provider_map).await {
             error!("{:?}", err);
             return;
         }
         debug!("Finished scraping {}", pp.provider.name.to_string());
-        ()
     });
     join_all(this_scrape).await;
 }
@@ -111,13 +108,14 @@ async fn run(
     pp: &PendingProvider,
     provider_map: &ProviderMap,
 ) -> Result<(), Box<dyn Error + Send>> {
-    let provider = provider_map.get(&pp.provider.name).expect(&format!(
-        "Tried to get a provider that doesn't exist {}",
-        &pp.provider,
-    ));
-    match iter(Arc::clone(&ctx), &pp, &**provider).await {
-        Err(err) => eprintln!("{:?}", err),
-        Ok(_) => {}
+    let provider = provider_map.get(&pp.provider.name).unwrap_or_else(|| {
+        panic!(
+            "Tried to get a provider that doesn't exist {}",
+            &pp.provider,
+        )
+    });
+    if let Err(err) = iter(Arc::clone(&ctx), pp, &**provider).await {
+        eprintln!("{:?}", err);
     }
     Ok(())
 }
