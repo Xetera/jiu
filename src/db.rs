@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::env;
 use std::iter::FromIterator;
 
-use dotenv::dotenv;
 use itertools::Itertools;
 use log::error;
 use sqlx::postgres::PgPoolOptions;
@@ -19,7 +18,6 @@ use crate::scraper::{ProviderFailure, ScopedProvider};
 pub type Database = Pool<Postgres>;
 
 pub async fn connect() -> Result<Database, Error> {
-    dotenv().ok();
     Ok(PgPoolOptions::new()
         .max_connections(5)
         .connect(&env::var("DATABASE_URL").expect("No DATABASE_URL env"))

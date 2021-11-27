@@ -1,7 +1,9 @@
 use std::env;
 use std::{error::Error, sync::Arc, time::Duration};
 
+use dotenv::dotenv;
 use futures::future::join_all;
+use jiu::server::run_server;
 use log::{debug, error, info, trace};
 use reqwest::Client;
 use sqlx::{Pool, Postgres};
@@ -39,7 +41,7 @@ async fn iter(
     let mut result = scrape(&sp, &*provider, &step).await?;
 
     let webhooks = webhooks_for_provider(&ctx.db, &sp).await?;
-    let webhook_interactions = if !result.requests.is_empty() {
+    let webhook_interactions = if result.discovered_new_images() {
         let dispatch = webhooks
             .into_iter()
             .map(|wh| {
@@ -128,6 +130,17 @@ async fn setup() -> anyhow::Result<()> {
         Err(_) => None,
     });
     info!("Starting JiU");
+    tokio::spawn(async move {
+        match connect().await {
+            Ok(db) => {
+                run_server(Arc::new(db), 8080).await;
+            }
+            Err(err) => {
+                error!("{:?}", err)
+            }
+        }
+    });
+    // Ok(())
     loop {
         info!("Starting job loop");
         let ctx = Arc::new(Context {
@@ -145,16 +158,13 @@ async fn setup() -> anyhow::Result<()> {
         }
         info!("Finished job loop");
     }
-    // if let Err(err) = run_server(Arc::clone(&db)).await {
-    //     error!("Error with the webserver");
-    //     eprintln!("{:?}", err);
-    // };
 }
 
-#[actix_web::main]
+#[tokio::main]
 async fn main() {
     better_panic::install();
     env_logger::init();
+    dotenv().ok();
 
     info!("Running program");
     if let Err(err) = setup().await {

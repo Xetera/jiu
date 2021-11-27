@@ -1,9 +1,9 @@
 pub mod db;
+pub mod dispatcher;
 pub mod models;
 pub mod request;
 pub mod scheduler;
 pub mod scraper;
-// pub mod server;
-pub mod dispatcher;
+pub mod server;
 pub use dotenv::dotenv;
 pub use std::env;

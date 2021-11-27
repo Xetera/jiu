@@ -110,6 +110,12 @@ pub async fn pending_scrapes(db: &Database) -> anyhow::Result<Vec<PendingProvide
         .collect::<Vec<_>>();
 
     let original_length = out.len();
+    sqlx::query!(
+        "UPDATE provider_resource SET last_queue = NOW() WHERE id = ANY($1)",
+        &out.iter().map(|p| p.id).collect::<Vec<_>>()
+    )
+    .fetch_one(db)
+    .await;
     let safe_providers = if cfg!(debug_assertions) {
         // making sure we don't blow things up in case we're running this in development with tons of
         // pending providers

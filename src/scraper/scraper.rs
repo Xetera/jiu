@@ -21,6 +21,19 @@ pub struct Scrape<'a> {
     pub requests: Vec<ScrapeRequest>,
 }
 
+impl Scrape<'_> {
+    pub fn discovered_new_images(&self) -> bool {
+        let step = match self.requests.get(0) {
+            None => return false,
+            Some(req) => &req.step,
+        };
+        match step {
+            ScraperStep::Data(data) => !data.posts.is_empty(),
+            ScraperStep::Error(_) => false,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ScrapeRequest {
     pub date: NaiveDateTime,
