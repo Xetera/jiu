@@ -23,7 +23,9 @@ impl AMQPDispatcher {
             .exchange_declare(
                 DIRECT_QUEUE_NAME,
                 ExchangeKind::Topic,
-                ExchangeDeclareOptions::default(),
+                ExchangeDeclareOptions {
+                    ..ExchangeDeclareOptions::default()
+                },
                 FieldTable::default(),
             )
             .await?;
@@ -32,7 +34,10 @@ impl AMQPDispatcher {
         channel
             .queue_declare(
                 DIRECT_QUEUE_NAME,
-                QueueDeclareOptions::default(),
+                QueueDeclareOptions {
+                    durable: true,
+                    ..QueueDeclareOptions::default()
+                },
                 FieldTable::default(),
             )
             .await?;
