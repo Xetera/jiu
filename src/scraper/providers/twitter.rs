@@ -207,11 +207,6 @@ impl Provider for TwitterTimeline {
                     .map(|e| e.naive_utc());
                 let body = tweet.full_text.clone().map(|t| replace_twitter_string(&t));
                 tweet.entities.media.as_ref().map(|media| {
-                    // very hacky disgusting way to get
-                    // https://twitter.com/hf_dreamcatcher/status/1459831679107756039
-                    // from
-                    // https://twitter.com/hf_dreamcatcher/status/1459831679107756039/photo/1
-                    // otherwise we have to do a lookup on the user global object which I'm too lazy for
                     let user_option = user_db.get(&tweet.user_id_str);
                     let url = user_option.map(|user| {
                         format!(

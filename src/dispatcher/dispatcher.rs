@@ -79,11 +79,7 @@ pub async fn dispatch_webhooks<'a>(
     let client = &Client::new();
     // request results are not guaranteed to be in order
     let mut results: Vec<WebhookInteraction> = vec![];
-    // let posts = dispatch
-    //     .iter()
-    //     .flat_map(|(_, p)| &p.posts.iter().flat_map(|p| p.images).collect::<Vec<_>>())
-    //     .collect::<Vec<_>>();
-    // let discord_media = &posts[0..min(image_length, DISCORD_IMAGE_DISPLAY_LIMIT)];
+
     let ref_cell = RwLock::new(&mut results);
     let iter = |(wh, payload): (DatabaseWebhook, DispatchablePayload)| {
         let f = ref_cell.write();
