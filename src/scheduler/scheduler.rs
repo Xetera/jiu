@@ -15,14 +15,14 @@ use crate::{
 };
 
 const MAX_TESTING_PROVIDERS: usize = 10;
-const SCHEDULER_START_MILLISECONDS: u64 = if cfg!(debug_assertions) {
+pub const SCHEDULER_START_MILLISECONDS: u64 = if cfg!(debug_assertions) {
     1000 * 3
 } else {
     1000 * 30
 };
 
 // making life easier for testing. Could blow up in my face some day...
-const SCHEDULER_END_MILLISECONDS: u64 = if cfg!(debug_assertions) {
+pub const SCHEDULER_END_MILLISECONDS: u64 = if cfg!(debug_assertions) {
     1000 * 10
 } else {
     8.64e7 as u64
@@ -119,7 +119,8 @@ pub async fn pending_scrapes(db: &Database) -> anyhow::Result<Vec<PendingProvide
     let safe_providers = if cfg!(debug_assertions) {
         // making sure we don't blow things up in case we're running this in development with tons of
         // pending providers
-        let result = Vec::from_iter(out[..MAX_TESTING_PROVIDERS].iter().map(|p| p.to_owned()));
+        let slice_boundary = MAX_TESTING_PROVIDERS.min(out.len());
+        let result = Vec::from_iter(out[..slice_boundary].iter().map(|p| p.to_owned()));
         if result.len() != original_length {
             info!(
                 "Debug mode truncated pending providers from {} to {}",

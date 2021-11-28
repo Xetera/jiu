@@ -114,12 +114,12 @@ impl Provider for PinterestBoardFeed {
     fn id(&self) -> AllProviders {
         AllProviders::PinterestBoardFeed
     }
-    fn next_page_size(&self, last_scraped: Option<NaiveDateTime>, _iteration: usize) -> PageSize {
-        PageSize(match last_scraped {
-            // TODO: fix
-            None => 20,
-            Some(_) => 20,
-        })
+    fn max_page_size(&self) -> PageSize {
+        PageSize(100)
+    }
+
+    fn default_page_size(&self) -> PageSize {
+        PageSize(20)
     }
 
     fn from_provider_destination(

@@ -121,7 +121,11 @@ async fn request_page<'a>(
             (InternalScraperStep::Exit, None)
         }
         Ok(ProviderStep::Next(result, pagination)) => {
-            let page_size = provider.next_page_size(input.last_scrape, iteration);
+            let page_size = if input.is_first_scrape {
+                provider.max_page_size()
+            } else {
+                provider.default_page_size()
+            };
 
             let id = sp.destination.clone();
             let maybe_next_url =
@@ -150,7 +154,11 @@ pub async fn scrape<'a>(
     input: &ScrapeRequestInput,
 ) -> Result<Scrape<'a>, ProviderFailure> {
     let initial_iteration = 0;
-    let page_size = provider.next_page_size(input.last_scrape, initial_iteration);
+    let page_size = if input.is_first_scrape {
+        provider.max_page_size()
+    } else {
+        provider.default_page_size()
+    };
     let id = sp.destination.clone();
     let url = provider.from_provider_destination(&id, page_size.to_owned(), None)?;
 
@@ -167,7 +175,7 @@ pub async fn scrape<'a>(
         info!("Scraping URL: {:?}", state.url.0);
         Some(request_page(sp, provider, &state, input).await)
     })
-    .boxed_local();
+    .boxed();
 
     let mut scrape_requests: Vec<ScrapeRequest> = vec![];
     let scrape_start = Instant::now();
@@ -187,14 +195,20 @@ pub async fn scrape<'a>(
             InternalScraperStep::Data(page) => {
                 let total_found_images = page.posts.iter().flat_map(|p| &p.images).count();
                 let mut posts: Vec<ProviderPost> = vec![];
-                // it SHOULDN'T be possible for us to have seen a post and only
-                // have it partially saved... This should be good enough
                 for post in page.posts {
-                    let has_known_image = post
+                    // it SHOULDN'T be possible for us to have seen a post and only
+                    // have it partially saved... This should be good enough
+                    // This does sadly break the debugging process if you're deleting images
+                    // from the db and re-scraping to trigger things
+                    let known_image = post
                         .images
                         .iter()
-                        .any(|image| input.latest_data.contains(&image.unique_identifier));
-                    if has_known_image {
+                        .find(|image| input.latest_data.contains(&image.unique_identifier));
+                    if let Some(image) = known_image {
+                        debug!(
+                            "Reached last known image id for {}: {}",
+                            sp, image.unique_identifier
+                        );
                         break;
                     }
                     posts.push(post)

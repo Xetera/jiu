@@ -29,15 +29,22 @@ async fn iter(
     provider: &dyn Provider,
 ) -> anyhow::Result<()> {
     let sp = pending.provider.clone();
-    trace!("Getting latest media");
     let latest_data = latest_media_ids_from_provider(&ctx.db, &sp).await?;
-    let _is_first_scrape = !latest_data.is_empty();
+    // there must be at least ONE data found if the scrape isn't the first ever one
+    let is_first_scrape = latest_data.is_empty();
+    if is_first_scrape {
+        trace!(
+            "Scraping {}: {} for the first time ever",
+            sp.name.to_string(),
+            sp.destination
+        )
+    }
     let step = ScrapeRequestInput {
         latest_data,
+        is_first_scrape,
         default_name: pending.default_name.clone(),
         last_scrape: pending.last_scrape,
     };
-    trace!("Scraping");
     let mut result = scrape(&sp, &*provider, &step).await?;
 
     let webhooks = webhooks_for_provider(&ctx.db, &sp).await?;
@@ -123,12 +130,6 @@ async fn run(
 }
 
 async fn setup() -> anyhow::Result<()> {
-    let db = Arc::new(connect().await?);
-    let client = Arc::new(Client::new());
-    let amqp = Arc::new(match env::var("AMQP_URL") {
-        Ok(a) => Some(AMQPDispatcher::from_connection_string(&a).await.unwrap()),
-        Err(_) => None,
-    });
     info!("Starting JiU");
     tokio::spawn(async move {
         match connect().await {
@@ -140,19 +141,38 @@ async fn setup() -> anyhow::Result<()> {
             }
         }
     });
-    // Ok(())
     loop {
-        info!("Starting job loop");
-        let ctx = Arc::new(Context {
-            db: Arc::clone(&db),
-            amqp: Arc::clone(&amqp),
-            client: Arc::clone(&client),
-        });
-        let data = tokio::task::spawn_local(async move {
-            job_loop(ctx).await;
-            info!("Requests finished for the day...");
-        });
-        let delay = tokio::task::spawn(tokio::time::sleep(Duration::from_millis(8.64e7 as u64)));
+        info!("Starting job loop {}", SCHEDULER_END_MILLISECONDS);
+        let data = match env::var("NO_WORKER") {
+            Ok(_) => {
+                info!("Not starting worker because 'NO_WORKER' environment was set");
+                tokio::task::spawn(async {})
+            }
+            _ => tokio::task::spawn(async {
+                let db = match connect().await {
+                    Err(err) => {
+                        error!("{:?}", err);
+                        return;
+                    }
+                    Ok(db) => db,
+                };
+                let db = Arc::new(db);
+                let client = Arc::new(Client::new());
+                let amqp = Arc::new(match env::var("AMQP_URL") {
+                    Ok(a) => Some(AMQPDispatcher::from_connection_string(&a).await.unwrap()),
+                    Err(_) => None,
+                });
+                let ctx = Arc::new(Context {
+                    db: Arc::clone(&db),
+                    amqp: Arc::clone(&amqp),
+                    client: Arc::clone(&client),
+                });
+                info!("Starting requests for the day...");
+                job_loop(ctx).await;
+                info!("Requests finished for the day...");
+            }),
+        };
+        let delay = tokio::time::sleep(Duration::from_millis(SCHEDULER_END_MILLISECONDS));
         if let (_, Err(join_err)) = tokio::join!(delay, data) {
             println!("{:?}", join_err)
         }

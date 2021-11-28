@@ -44,7 +44,7 @@ struct ScheduledProvider {
     destination: String,
     priority: BigDecimal,
     tokens: BigDecimal,
-    // last_scrape: Option<NaiveDateTime>,
+    default_name: Option<String>,
     last_queue: Option<NaiveDateTime>,
     metadata: Option<serde_json::Value>,
 }
@@ -52,11 +52,12 @@ struct ScheduledProvider {
 #[derive(Serialize)]
 struct ScheduleResponse {
     id: i32,
-    name: String,
+    provider: String,
     url: String,
     destination: String,
     wait_days: i16,
     metadata: Option<serde_json::Value>,
+    name: String,
 }
 
 enum AppError {
@@ -99,7 +100,7 @@ async fn scheduled_scrapes(
 ) -> Result<Json<Vec<ScheduleResponse>>, AppError> {
     let rows = sqlx::query_as!(
         ScheduledProvider,
-        "SELECT pr.id, pr.priority, pr.name, pr.destination, pr.url, pr.tokens, pr.last_queue, (
+        "SELECT pr.id, pr.priority, pr.name, pr.destination, pr.url, pr.tokens, pr.last_queue, pr.default_name, (
             SELECT metadata FROM amqp_source where provider_destination = pr.destination and provider_name = pr.name
         ) as metadata FROM provider_resource pr"
     )
@@ -127,11 +128,12 @@ async fn scheduled_scrapes(
             .floor() as i16;
             ScheduleResponse {
                 destination: row.destination,
-                name: row.name,
+                provider: row.name,
                 id: row.id,
                 url: row.url,
                 wait_days,
                 metadata: row.metadata,
+                name: row.default_name.unwrap_or_default(),
             }
         })
         .collect::<Vec<_>>();
@@ -139,11 +141,12 @@ async fn scheduled_scrapes(
         .into_iter()
         .map(|t| ScheduleResponse {
             destination: t.destination,
-            name: t.name,
+            provider: t.name,
             id: t.id,
             url: t.url,
             wait_days: 0,
             metadata: t.metadata,
+            name: t.default_name.unwrap_or_default(),
         })
         .collect::<Vec<_>>();
     out.extend(labeled);
@@ -163,5 +166,4 @@ pub async fn run_server(db: Arc<Database>, port: u16) {
         .serve(router.into_make_service())
         .await
         .unwrap();
-    info!("Started server");
 }

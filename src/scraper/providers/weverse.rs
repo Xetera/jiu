@@ -278,17 +278,12 @@ impl Provider for WeverseArtistFeed {
         attempt_first_login(self, &self.credentials).await;
     }
 
-    fn next_page_size(&self, last_scrape: Option<NaiveDateTime>, iteration: usize) -> PageSize {
-        PageSize(match last_scrape {
-            None => MAX_PAGESIZE,
-            Some(_) => {
-                if iteration > 2 {
-                    MAX_PAGESIZE
-                } else {
-                    DEFAULT_PAGESIZE
-                }
-            }
-        })
+    fn max_page_size(&self) -> PageSize {
+        PageSize(MAX_PAGESIZE)
+    }
+
+    fn default_page_size(&self) -> PageSize {
+        PageSize(DEFAULT_PAGESIZE)
     }
 
     // async fn canonical_url_to_id(&self, url: &str) -> CanonicalUrlResolution {
@@ -323,7 +318,7 @@ impl Provider for WeverseArtistFeed {
     }
 
     fn max_pagination(&self) -> u16 {
-        2
+        100
     }
 
     async fn unfold(&self, state: ProviderState) -> Result<ProviderStep, ProviderFailure> {

@@ -1,7 +1,12 @@
 use futures::{stream, StreamExt};
+use tokio::sync::Mutex;
+// use parking_lot::Mutex;
 use reqwest::{Client, Response};
 use serde::Serialize;
-use std::{sync::RwLock, time::Instant};
+use std::{
+    sync::{Arc, RwLock},
+    time::Instant,
+};
 
 use crate::{
     dispatcher::{webhook_type, WebhookDestination},
@@ -80,9 +85,9 @@ pub async fn dispatch_webhooks<'a>(
     // request results are not guaranteed to be in order
     let mut results: Vec<WebhookInteraction> = vec![];
 
-    let ref_cell = RwLock::new(&mut results);
+    let results_lock = Arc::new(Mutex::new(&mut results));
     let iter = |(wh, payload): (DatabaseWebhook, DispatchablePayload)| {
-        let f = ref_cell.write();
+        let f = results_lock.lock();
         async move {
             let builder = client
                 .post(&wh.destination)
@@ -95,7 +100,7 @@ pub async fn dispatch_webhooks<'a>(
                     .await
                     .map_err(HttpError::ReqwestError);
                 let response_time = instant.elapsed();
-                f.unwrap().push(WebhookInteraction {
+                f.await.push(WebhookInteraction {
                     webhook: wh,
                     response,
                     response_time,

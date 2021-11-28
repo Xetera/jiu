@@ -82,9 +82,14 @@ impl Provider for TwitterTimeline {
         attempt_first_login(self, &self.guest_token).await;
     }
 
-    fn next_page_size(&self, _last_scraped: Option<NaiveDateTime>, _iteration: usize) -> PageSize {
+    fn max_page_size(&self) -> PageSize {
         PageSize(100)
     }
+
+    fn default_page_size(&self) -> PageSize {
+        PageSize(20)
+    }
+
     fn from_provider_destination(
         &self,
         id: &str,

@@ -140,8 +140,12 @@ impl Provider for UnitedCubeArtistFeed {
         }
     }
 
-    fn next_page_size(&self, _last_scraped: Option<NaiveDateTime>, _iteration: usize) -> PageSize {
+    fn max_page_size(&self) -> PageSize {
         PageSize(200)
+    }
+
+    fn default_page_size(&self) -> PageSize {
+        PageSize(20)
     }
 
     fn on_error(&self, http_error: &HttpError) -> anyhow::Result<ProviderErrorHandle> {

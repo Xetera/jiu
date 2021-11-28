@@ -125,6 +125,7 @@ pub struct ScrapeRequestInput {
     pub latest_data: HashSet<String>,
     pub default_name: Option<String>,
     pub last_scrape: Option<NaiveDateTime>,
+    pub is_first_scrape: bool,
 }
 
 impl From<HttpError> for ProviderFailure {
@@ -260,11 +261,14 @@ pub trait Provider: Sync + Send + RateLimitable {
     /// a string that uniquely identifies this provider
     fn id(&self) -> AllProviders;
 
-    /// The page size that should be used when scraping
-    /// Destinations that haven't been scraped before should be using a larger
-    /// page size.
-    /// iteration is 0 indexed
-    fn next_page_size(&self, last_scraped: Option<NaiveDateTime>, iteration: usize) -> PageSize;
+    /// The maximum amount of items the provider can retrieve at one time
+    /// This value is used whenever a provider is being scraped for the first time
+    /// in order to quickly enumerate through all past data
+    fn max_page_size(&self) -> PageSize;
+
+    /// The default page size that is used when checking a provider that has
+    /// already been scraped at least one time in the past
+    fn default_page_size(&self) -> PageSize;
 
     /// The maximum number of times a resource can be paginated before exiting.
     /// This value is ignored if the context has no images aka the resource
