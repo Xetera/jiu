@@ -11,7 +11,6 @@ RUN rm src/*.rs
 
 # Now copy the sources and do the real build
 ADD src src
-ADD site site
 ADD sqlx-data.json sqlx-data.json
 ENV SQLX_OFFLINE true
 
