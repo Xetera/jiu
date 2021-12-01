@@ -306,6 +306,84 @@
       ]
     }
   },
+  "99e22495966aeaf571d1284b6d8bb43157648ce44bb1f0ae9ef14df967b39642": {
+    "query": "UPDATE provider_resource SET last_queue = NOW() WHERE id = ANY($1)",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Int4Array"
+        ]
+      },
+      "nullable": []
+    }
+  },
+  "9bc5d5b4b5a39c8988d4954a98c90d60794e13ed73dd326730af87100154b0ef": {
+    "query": "SELECT pr.id, pr.priority, pr.name, pr.destination, pr.url, pr.tokens, pr.last_queue, pr.default_name, (\n            SELECT metadata FROM amqp_source where provider_destination = pr.destination and provider_name = pr.name\n        ) as metadata FROM provider_resource pr",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "priority",
+          "type_info": "Numeric"
+        },
+        {
+          "ordinal": 2,
+          "name": "name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 3,
+          "name": "destination",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 4,
+          "name": "url",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 5,
+          "name": "tokens",
+          "type_info": "Numeric"
+        },
+        {
+          "ordinal": 6,
+          "name": "last_queue",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 7,
+          "name": "default_name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 8,
+          "name": "metadata",
+          "type_info": "Jsonb"
+        }
+      ],
+      "parameters": {
+        "Left": []
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        null
+      ]
+    }
+  },
   "9f575b008ed35f72113b7e7c9b3db2bb06ceefc9c0a3a97b05aa4f8913f67417": {
     "query": "SELECT * FROM provider_resource pr\n        WHERE pr.enabled AND pr.tokens >= 1\n        ORDER BY pr.name DESC, pr.destination desc",
     "describe": {
