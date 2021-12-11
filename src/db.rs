@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::env;
 use std::iter::FromIterator;
 
+use anyhow::bail;
 use itertools::Itertools;
 use log::error;
 use sqlx::postgres::PgPoolOptions;
@@ -51,8 +52,14 @@ pub async fn amqp_metadata(
         "SELECT id, metadata FROM amqp_source a WHERE a.provider_destination = $1 AND a.provider_name = $2 LIMIT 1",
         sp.destination,
         sp.name.to_string()
-    ).fetch_optional(db).await?;
-    Ok(result)
+    ).fetch_one(db).await;
+    match result {
+        Ok(ok) => Ok(Some(ok)),
+        Err(err) => match err {
+            Error::RowNotFound => Ok(None),
+            err_name => bail!(err_name),
+        },
+    }
 }
 
 pub async fn webhooks_for_provider(

@@ -59,9 +59,8 @@ async fn iter(
         // we don't really care about the interactions in amqp since we have full
         // control of that environment anyways
         if let Some(amqp) = &*ctx.amqp {
-            if let Ok(amqp_d) = amqp_metadata(&*ctx.db, &sp).await {
-                let payload =
-                    DispatchablePayload::new(&*provider, &result, amqp_d.and_then(|r| r.metadata));
+            if let Ok(Some(amqp_d)) = amqp_metadata(&*ctx.db, &sp).await {
+                let payload = DispatchablePayload::new(&*provider, &result, amqp_d.metadata);
                 trace!("Publishing AMQP message for {}", &provider.id().to_string());
                 amqp.publish(&payload).await;
             }
