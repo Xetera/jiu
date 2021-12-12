@@ -130,11 +130,9 @@ async fn run(
 
 async fn setup() -> anyhow::Result<()> {
     info!("Starting JiU");
-    tokio::spawn(async move {
+    tokio::spawn(async {
         match connect().await {
-            Ok(db) => {
-                run_server(Arc::new(db), 8080).await;
-            }
+            Ok(db) => run_server(Arc::new(db), 8080).await,
             Err(err) => {
                 error!("{:?}", err)
             }

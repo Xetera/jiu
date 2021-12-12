@@ -161,7 +161,7 @@ pub async fn run_server(db: Arc<Database>, port: u16) {
     let router = Router::new()
         .route("/schedule", get(scheduled_scrapes))
         .layer(AddExtensionLayer::new(ctx));
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     axum::Server::bind(&addr)
         .serve(router.into_make_service())
         .await
