@@ -16,7 +16,7 @@ jobs:
       timeout-minutes: 20
       uses: porter-dev/porter-update-action@v0.1.0
       with:
-        app: jiu
+        app: media-discovery
         cluster: "355"
         host: https://dashboard.getporter.dev
         namespace: default
