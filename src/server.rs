@@ -17,25 +17,9 @@ use serde::Serialize;
 use serde_json::json;
 use sqlx::types::BigDecimal;
 
+use crate::api::v1::{v1_scheduled_scrapes, v1_scrape_history};
+use crate::api::{AppError, Context};
 use crate::db::{latest_requests, Database};
-
-struct Context {
-    db: Arc<Database>,
-}
-
-// async fn get_requests(ctx: web::Data<Context>) -> impl Responder {
-//     match latest_requests(&ctx.db, true).await {
-//         Ok(data) => {
-//             debug!("Got response from latest_request");
-//             HttpResponse::Ok().body(serde_json::to_value(data).unwrap().to_string())
-//         }
-//         Err(err) => {
-//             error!("{:?}", err);
-//             HttpResponse::InternalServerError().body("[]")
-//         }
-//     }
-// }
-//
 
 struct ScheduledProvider {
     id: i32,
@@ -60,41 +44,7 @@ struct ScheduleResponse {
     name: String,
 }
 
-enum AppError {
-    SomeError(anyhow::Error),
-    SqlxError(sqlx::Error),
-}
-
-impl From<anyhow::Error> for AppError {
-    fn from(inner: anyhow::Error) -> Self {
-        AppError::SomeError(inner)
-    }
-}
-
-impl From<sqlx::Error> for AppError {
-    fn from(inner: sqlx::Error) -> Self {
-        AppError::SqlxError(inner)
-    }
-}
-
-impl IntoResponse for AppError {
-    type Body = Full<Bytes>;
-    type BodyError = Infallible;
-
-    fn into_response(self) -> Response<Self::Body> {
-        let (status, error_message) = match self {
-            AppError::SomeError(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()),
-            AppError::SqlxError(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()),
-        };
-
-        let body = Json(json!({
-            "error": error_message,
-        }));
-
-        (status, body).into_response()
-    }
-}
-
+#[deprecated]
 async fn scheduled_scrapes(
     Extension(state): Extension<Arc<Context>>,
 ) -> Result<Json<Vec<ScheduleResponse>>, AppError> {
@@ -160,6 +110,8 @@ pub async fn run_server(db: Arc<Database>, port: u16) {
     });
     let router = Router::new()
         .route("/schedule", get(scheduled_scrapes))
+        .route("/v1/schedule", get(v1_scheduled_scrapes))
+        .route("/v1/history", get(v1_scrape_history))
         .layer(AddExtensionLayer::new(ctx));
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     axum::Server::bind(&addr)
