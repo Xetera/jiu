@@ -34,6 +34,7 @@ pub struct PageSize(usize);
 pub struct ScopedProvider {
     pub name: AllProviders,
     pub destination: String,
+    pub official: bool,
 }
 
 impl Display for ScopedProvider {

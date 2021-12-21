@@ -37,12 +37,12 @@ pub struct DispatchablePayloadProviderInfo {
     pub _type: AllProviders,
     pub id: String,
     pub ephemeral: bool,
+    pub official: bool,
 }
 
 #[derive(Debug, Serialize, Clone)]
 pub struct DispatchablePayload {
     pub provider: DispatchablePayloadProviderInfo,
-    // what even
     pub posts: Vec<ProviderPost>,
     pub metadata: Option<serde_json::Value>,
 }
@@ -67,6 +67,7 @@ impl DispatchablePayload {
                 _type: scrape.provider.name,
                 id: scrape.provider.destination.clone(),
                 ephemeral: provider.ephemeral(),
+                official: scrape.provider.official,
             },
             posts,
             metadata,

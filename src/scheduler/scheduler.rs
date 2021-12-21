@@ -69,6 +69,7 @@ pub async fn pending_scrapes(db: &Database) -> anyhow::Result<Vec<PendingProvide
                         ScopedProvider {
                             destination: row.destination.clone(),
                             name: AllProviders::from_str(&row.name).unwrap(),
+                            official: row.official,
                         }, // last_scrape: row.last_scrape,
                         row.last_scrape,
                         row.default_name.clone(),
@@ -159,6 +160,7 @@ pub async fn update_priorities(db: &Database, sp: &[PendingProvider]) -> anyhow:
             pr.id,
             pr.name,
             pr.destination,
+            pr.official,
             s.priority as resource_priority,
             s.scraped_at,
             s.priority,
@@ -204,6 +206,7 @@ pub async fn update_priorities(db: &Database, sp: &[PendingProvider]) -> anyhow:
                 provider: ScopedProvider {
                     destination: destination.clone(),
                     name: AllProviders::from_str(&name).unwrap(),
+                    official: row.official,
                 },
             })
             .collect::<Vec<ScrapeHistory>>();
