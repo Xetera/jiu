@@ -202,6 +202,11 @@
           "ordinal": 11,
           "name": "default_name",
           "type_info": "Text"
+        },
+        {
+          "ordinal": 12,
+          "name": "official",
+          "type_info": "Bool"
         }
       ],
       "parameters": {
@@ -222,7 +227,8 @@
         true,
         true,
         false,
-        true
+        true,
+        false
       ]
     }
   },
@@ -303,6 +309,66 @@
         true,
         true,
         false
+      ]
+    }
+  },
+  "812e73deaa060749f350c77891fc4f1f99a1d06d93c105da2cb3e969efda9990": {
+    "query": "SELECT scrape.id,\n            pr.url,\n            pr.default_name,\n            pr.official,\n            pr.name,\n            pr.destination,\n            scrape.priority,\n            scrape.scraped_at as date\n        FROM scrape\n                 INNER JOIN provider_resource pr on pr.destination = scrape.provider_destination\n            and scrape.provider_name = pr.name\n        ORDER BY scrape.scraped_at desc\n        LIMIT 100\n        ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "url",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 2,
+          "name": "default_name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 3,
+          "name": "official",
+          "type_info": "Bool"
+        },
+        {
+          "ordinal": 4,
+          "name": "name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 5,
+          "name": "destination",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 6,
+          "name": "priority",
+          "type_info": "Numeric"
+        },
+        {
+          "ordinal": 7,
+          "name": "date",
+          "type_info": "Timestamp"
+        }
+      ],
+      "parameters": {
+        "Left": []
+      },
+      "nullable": [
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false,
+        true
       ]
     }
   },
@@ -447,6 +513,11 @@
           "ordinal": 11,
           "name": "default_name",
           "type_info": "Text"
+        },
+        {
+          "ordinal": 12,
+          "name": "official",
+          "type_info": "Bool"
         }
       ],
       "parameters": {
@@ -464,7 +535,8 @@
         true,
         true,
         false,
-        true
+        true,
+        false
       ]
     }
   },
@@ -587,6 +659,78 @@
       },
       "nullable": [
         false
+      ]
+    }
+  },
+  "c7f86310f2486181634bd51114210fdc011324b59925a95a5a7f275dc9335688": {
+    "query": "SELECT pr.id, pr.official, pr.priority, pr.name, pr.destination, pr.url, pr.tokens, pr.last_queue, pr.default_name, (\n            SELECT metadata FROM amqp_source where provider_destination = pr.destination and provider_name = pr.name\n        ) as metadata FROM provider_resource pr",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "official",
+          "type_info": "Bool"
+        },
+        {
+          "ordinal": 2,
+          "name": "priority",
+          "type_info": "Numeric"
+        },
+        {
+          "ordinal": 3,
+          "name": "name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 4,
+          "name": "destination",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 5,
+          "name": "url",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 6,
+          "name": "tokens",
+          "type_info": "Numeric"
+        },
+        {
+          "ordinal": 7,
+          "name": "last_queue",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 8,
+          "name": "default_name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 9,
+          "name": "metadata",
+          "type_info": "Jsonb"
+        }
+      ],
+      "parameters": {
+        "Left": []
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        null
       ]
     }
   },
