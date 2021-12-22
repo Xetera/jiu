@@ -172,4 +172,4 @@ SQL queries.
 
 > If you would like to use this project, please change the `USER_AGENT` environment variable to identify your crawler accurately.
 
-Built for [simp.pics](https://github.com/xetera/simp.pics)
+Built for [kiyomi.io](https://github.com/xetera/kiyomi.io)
