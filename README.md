@@ -138,6 +138,16 @@ If a Discord webhook URL is detected, the payload is changed to allow Discord to
 
 There is currently no retry mechanism for webhooks that fail to deliver successfully.
 
+## Endpoints
+
+Jiu runs a webserver on port 8080 to allow dynamically resolving new resources by URL and getting stats at runtime
+
+- `POST    /v1/provider` Create a new provider by resolving a URL to a resource
+- `DELETE  /v1/provider` Delete an existing provider (sets it to `enabled=false`)
+- `GET     /v1/schedule` Get the upcoming scheduled scrapes
+- `GET     /v1/history`  The list of the last 100 scraped endpoints
+- `GET     /v1/stats`    The stats of all the registered providers
+
 ## Jiu is **NOT**:
 
 * For bombarding sites like Twitter with requests to detect changes within seconds.

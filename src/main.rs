@@ -3,13 +3,13 @@ use std::{error::Error, sync::Arc, time::Duration};
 
 use dotenv::dotenv;
 use futures::future::join_all;
-use jiu::server::run_server;
 use log::{debug, error, info, trace};
 use reqwest::Client;
 use sqlx::{Pool, Postgres};
 
 use jiu::dispatcher::amqp::AMQPDispatcher;
 use jiu::dispatcher::dispatcher::{dispatch_webhooks, DispatchablePayload};
+use jiu::server::run_server;
 use jiu::{
     db::*,
     models::PendingProvider,
@@ -21,6 +21,7 @@ struct Context {
     db: Arc<Pool<Postgres>>,
     amqp: Arc<Option<AMQPDispatcher>>,
     client: Arc<Client>,
+    provider_map: Arc<ProviderMap>,
 }
 
 async fn iter(
@@ -78,9 +79,6 @@ async fn iter(
 }
 
 async fn job_loop(ctx: Arc<Context>) {
-    let provider_map = get_provider_map(&Arc::clone(&ctx.client))
-        .await
-        .expect("Could not successfully initialize a provider map");
     let arc_db = Arc::clone(&ctx.db);
     trace!("Getting pending scrapes");
     let pendings = match pending_scrapes(&arc_db).await {
@@ -102,7 +100,7 @@ async fn job_loop(ctx: Arc<Context>) {
         let pp = pending;
         let sleep_time = pp.scrape_date;
         tokio::time::sleep(sleep_time).await;
-        if let Err(err) = run(Arc::clone(&ctx), &pp, &provider_map).await {
+        if let Err(err) = run(Arc::clone(&ctx), &pp, &ctx.provider_map).await {
             error!("{:?}", err);
             return;
         }
@@ -130,22 +128,31 @@ async fn run(
 
 async fn setup() -> anyhow::Result<()> {
     info!("Starting JiU");
-    tokio::spawn(async {
+    let client = Arc::new(Client::new());
+    let provider_map = Arc::new(
+        get_provider_map(&Arc::clone(&client))
+            .await
+            .expect("Could not successfully initialize a provider map"),
+    );
+    let pm = Arc::clone(&provider_map);
+    tokio::spawn(async move {
         match connect().await {
-            Ok(db) => run_server(Arc::new(db), 8080).await,
+            Ok(db) => run_server(Arc::new(db), pm, 8080).await,
             Err(err) => {
                 error!("{:?}", err)
             }
         }
     });
     loop {
+        let client = Arc::clone(&client);
+        let provider_map = Arc::clone(&provider_map);
         info!("Starting job loop {}", SCHEDULER_END_MILLISECONDS);
         let data = match env::var("NO_WORKER") {
             Ok(_) => {
                 info!("Not starting worker because 'NO_WORKER' environment was set");
                 tokio::task::spawn(async {})
             }
-            _ => tokio::task::spawn(async {
+            _ => tokio::task::spawn(async move {
                 let db = match connect().await {
                     Err(err) => {
                         error!("{:?}", err);
@@ -154,7 +161,6 @@ async fn setup() -> anyhow::Result<()> {
                     Ok(db) => db,
                 };
                 let db = Arc::new(db);
-                let client = Arc::new(Client::new());
                 let amqp = Arc::new(match env::var("AMQP_URL") {
                     Ok(a) => Some(AMQPDispatcher::from_connection_string(&a).await.unwrap()),
                     Err(_) => None,
@@ -163,6 +169,7 @@ async fn setup() -> anyhow::Result<()> {
                     db: Arc::clone(&db),
                     amqp: Arc::clone(&amqp),
                     client: Arc::clone(&client),
+                    provider_map,
                 });
                 info!("Starting requests for the day...");
                 job_loop(ctx).await;

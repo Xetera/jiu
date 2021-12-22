@@ -1,59 +1,19 @@
 {
   "db": "PostgreSQL",
-  "28ea8ebc15f0951e95e4bcc43d708a364e0b1ebcaeba0a3fe85fb7c5dcf73e50": {
-    "query": "SELECT\n            pr.id,\n            pr.name,\n            pr.destination,\n            s.priority as resource_priority,\n            s.scraped_at,\n            s.priority,\n            (SELECT COUNT(*)\n              FROM media m\n              INNER JOIN scrape_request sr\n                on sr.id = m.scrape_request_id\n              where sr.scrape_id = s.id\n            ) as discovery_count\n        FROM provider_resource pr\n        INNER JOIN LATERAL (\n            SELECT *\n            FROM scrape s\n            WHERE s.provider_name = pr.name\n              AND s.provider_destination = pr.destination\n            ORDER BY s.scraped_at desc, id\n            LIMIT 30\n        ) s on True\n        WHERE pr.enabled AND pr.id = ANY($1)\n        ORDER BY s.scraped_at desc",
+  "1354990df0cf8773bbb2c27879e75e20c244908b84ddafc42ba0c2be3daa81a1": {
+    "query": "INSERT INTO provider_resource (destination, name, default_name, official, url) VALUES\n            ($1, $2, $3, $4, $5)\n            ON CONFLICT(destination, name) DO UPDATE SET enabled = True",
     "describe": {
-      "columns": [
-        {
-          "ordinal": 0,
-          "name": "id",
-          "type_info": "Int4"
-        },
-        {
-          "ordinal": 1,
-          "name": "name",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 2,
-          "name": "destination",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 3,
-          "name": "resource_priority",
-          "type_info": "Numeric"
-        },
-        {
-          "ordinal": 4,
-          "name": "scraped_at",
-          "type_info": "Timestamp"
-        },
-        {
-          "ordinal": 5,
-          "name": "priority",
-          "type_info": "Numeric"
-        },
-        {
-          "ordinal": 6,
-          "name": "discovery_count",
-          "type_info": "Int8"
-        }
-      ],
+      "columns": [],
       "parameters": {
         "Left": [
-          "Int4Array"
+          "Text",
+          "Text",
+          "Text",
+          "Bool",
+          "Text"
         ]
       },
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        true,
-        false,
-        null
-      ]
+      "nullable": []
     }
   },
   "299433bbcf3b5df1fdf1e96cc0bf6c0128ee763636444ada07875180c9533c8b": {
@@ -312,8 +272,8 @@
       ]
     }
   },
-  "812e73deaa060749f350c77891fc4f1f99a1d06d93c105da2cb3e969efda9990": {
-    "query": "SELECT scrape.id,\n            pr.url,\n            pr.default_name,\n            pr.official,\n            pr.name,\n            pr.destination,\n            scrape.priority,\n            scrape.scraped_at as date\n        FROM scrape\n                 INNER JOIN provider_resource pr on pr.destination = scrape.provider_destination\n            and scrape.provider_name = pr.name\n        ORDER BY scrape.scraped_at desc\n        LIMIT 100\n        ",
+  "8a2a6dfb5ae6f650e2cfc5f1c50d59738af0192416235116237d5fd39bdad0f3": {
+    "query": "SELECT pr.id,\n       pr.name,\n       pr.destination,\n       pr.enabled,\n       pr.url,\n       pr.priority,\n       pr.tokens,\n       pr.created_at,\n       pr.default_name,\n       pr.official,\n       (SELECT Max(sr.scraped_at)\n        FROM scrape_request sr\n                 inner join scrape s on pr.destination = s.provider_destination) as last_scrape,\n       (SELECT MAX(posted_at)\n        FROM media\n                 INNER JOIN public.scrape_request s on s.id = media.scrape_request_id\n                 inner join scrape s2 on s2.id = s.scrape_id\n        where s2.provider_destination = pr.destination\n          and s2.provider_name = pr.name\n       ) as last_post,\n       (SELECT COUNT(*)\n        from media\n                 inner join public.scrape_request r on r.id = media.scrape_request_id\n                 inner join scrape s3 on s3.id = r.scrape_id\n        where s3.provider_name = pr.name\n          and s3.provider_destination = pr.destination\n       ) as discovered_images,\n       (SELECT COUNT(*) from scrape inner join scrape_request sr2 on scrape.id = sr2.scrape_id\n          where scrape.provider_destination = pr.destination and scrape.provider_name = pr.name\n       ) as scrape_count\n    FROM provider_resource pr;",
     "describe": {
       "columns": [
         {
@@ -323,38 +283,68 @@
         },
         {
           "ordinal": 1,
-          "name": "url",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 2,
-          "name": "default_name",
-          "type_info": "Text"
-        },
-        {
-          "ordinal": 3,
-          "name": "official",
-          "type_info": "Bool"
-        },
-        {
-          "ordinal": 4,
           "name": "name",
           "type_info": "Text"
         },
         {
-          "ordinal": 5,
+          "ordinal": 2,
           "name": "destination",
           "type_info": "Text"
         },
         {
-          "ordinal": 6,
+          "ordinal": 3,
+          "name": "enabled",
+          "type_info": "Bool"
+        },
+        {
+          "ordinal": 4,
+          "name": "url",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 5,
           "name": "priority",
           "type_info": "Numeric"
         },
         {
+          "ordinal": 6,
+          "name": "tokens",
+          "type_info": "Numeric"
+        },
+        {
           "ordinal": 7,
-          "name": "date",
+          "name": "created_at",
           "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 8,
+          "name": "default_name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 9,
+          "name": "official",
+          "type_info": "Bool"
+        },
+        {
+          "ordinal": 10,
+          "name": "last_scrape",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 11,
+          "name": "last_post",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 12,
+          "name": "discovered_images",
+          "type_info": "Int8"
+        },
+        {
+          "ordinal": 13,
+          "name": "scrape_count",
+          "type_info": "Int8"
         }
       ],
       "parameters": {
@@ -363,12 +353,18 @@
       "nullable": [
         false,
         false,
+        false,
         true,
         false,
         false,
         false,
+        true,
+        true,
         false,
-        true
+        null,
+        null,
+        null,
+        null
       ]
     }
   },
@@ -540,6 +536,68 @@
       ]
     }
   },
+  "b59767bdf81926e613acc96ac57daec740896ddb95bc8cdcac9b3d7cedad856c": {
+    "query": "SELECT\n            pr.id,\n            pr.name,\n            pr.destination,\n            pr.official,\n            s.priority as resource_priority,\n            s.scraped_at,\n            s.priority,\n            (SELECT COUNT(*)\n              FROM media m\n              INNER JOIN scrape_request sr\n                on sr.id = m.scrape_request_id\n              where sr.scrape_id = s.id\n            ) as discovery_count\n        FROM provider_resource pr\n        INNER JOIN LATERAL (\n            SELECT *\n            FROM scrape s\n            WHERE s.provider_name = pr.name\n              AND s.provider_destination = pr.destination\n            ORDER BY s.scraped_at desc, id\n            LIMIT 30\n        ) s on True\n        WHERE pr.enabled AND pr.id = ANY($1)\n        ORDER BY s.scraped_at desc",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 2,
+          "name": "destination",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 3,
+          "name": "official",
+          "type_info": "Bool"
+        },
+        {
+          "ordinal": 4,
+          "name": "resource_priority",
+          "type_info": "Numeric"
+        },
+        {
+          "ordinal": 5,
+          "name": "scraped_at",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 6,
+          "name": "priority",
+          "type_info": "Numeric"
+        },
+        {
+          "ordinal": 7,
+          "name": "discovery_count",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Int4Array"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        null
+      ]
+    }
+  },
   "b942bd68d463cf99cc4727bf638c832af591023d2c6f7002fac47fc4e745a8ea": {
     "query": "INSERT INTO scrape_error (scrape_id, response_code, response_body, message)\n                            VALUES ($1, $2, $3, $4) returning id",
     "describe": {
@@ -637,6 +695,99 @@
         true,
         true,
         false,
+        false
+      ]
+    }
+  },
+  "c42fada7e4c07b1aae1a8085bab18acccbf6d7b21d6f98a88de70a54094b7582": {
+    "query": "UPDATE provider_resource SET enabled = False WHERE name = $1 and destination = $2 RETURNING *",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "destination",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 2,
+          "name": "name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 3,
+          "name": "enabled",
+          "type_info": "Bool"
+        },
+        {
+          "ordinal": 4,
+          "name": "url",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 5,
+          "name": "priority",
+          "type_info": "Numeric"
+        },
+        {
+          "ordinal": 6,
+          "name": "last_scrape",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 7,
+          "name": "last_queue",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 8,
+          "name": "created_at",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 9,
+          "name": "last_token_update",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 10,
+          "name": "tokens",
+          "type_info": "Numeric"
+        },
+        {
+          "ordinal": 11,
+          "name": "default_name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 12,
+          "name": "official",
+          "type_info": "Bool"
+        }
+      ],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text"
+        ]
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
         false
       ]
     }
@@ -754,6 +905,86 @@
       "nullable": [
         false
       ]
+    }
+  },
+  "ce133ba30e161f287fe786db501108742fda07f248b4e33dd85adb53d35442a5": {
+    "query": "SELECT scrape.id,\n            pr.url,\n            pr.default_name,\n            pr.official,\n            pr.name,\n            pr.destination,\n            scrape.priority,\n            scrape.scraped_at as date,\n            COALESCE((SELECT COUNT(*)\n            from media\n                     inner join public.scrape_request sr on sr.id = media.scrape_request_id\n                     inner join scrape s on s.id = sr.scrape_id\n               where sr.scrape_id = scrape.id), 0) as discovered_media\n        FROM scrape\n                 INNER JOIN provider_resource pr on pr.destination = scrape.provider_destination\n            and scrape.provider_name = pr.name\n        ORDER BY scrape.scraped_at desc\n        LIMIT 100\n        ",
+    "describe": {
+      "columns": [
+        {
+          "ordinal": 0,
+          "name": "id",
+          "type_info": "Int4"
+        },
+        {
+          "ordinal": 1,
+          "name": "url",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 2,
+          "name": "default_name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 3,
+          "name": "official",
+          "type_info": "Bool"
+        },
+        {
+          "ordinal": 4,
+          "name": "name",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 5,
+          "name": "destination",
+          "type_info": "Text"
+        },
+        {
+          "ordinal": 6,
+          "name": "priority",
+          "type_info": "Numeric"
+        },
+        {
+          "ordinal": 7,
+          "name": "date",
+          "type_info": "Timestamp"
+        },
+        {
+          "ordinal": 8,
+          "name": "discovered_media",
+          "type_info": "Int8"
+        }
+      ],
+      "parameters": {
+        "Left": []
+      },
+      "nullable": [
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false,
+        true,
+        null
+      ]
+    }
+  },
+  "d091c1135c7a0852b8bf8d2a6bbf4570e2f799334058d086d820ec38a022fc2c": {
+    "query": "INSERT INTO amqp_source (provider_name, provider_destination, metadata)\n                VALUES ($1, $2, $3)\n                ON CONFLICT(provider_name, provider_destination) DO UPDATE SET metadata = $3",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text",
+          "Jsonb"
+        ]
+      },
+      "nullable": []
     }
   },
   "d1d471d3f9095ebb9d2dc56aab261193cdbd35cb2b176abe518afff386974e02": {

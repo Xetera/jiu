@@ -13,6 +13,16 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[derive(Deserialize)]
+pub struct TwitterUserLookup {
+    pub id: String
+}
+
+#[derive(Deserialize)]
+pub struct TwitterUserLookupResponse {
+    pub data: TwitterUserLookup
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TwitterPostMetadata {
     pub(crate) language: Option<String>,

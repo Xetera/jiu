@@ -7,7 +7,7 @@ use axum::body::{Bytes, Full};
 use axum::extract::Extension;
 use axum::http::Response;
 use axum::response::IntoResponse;
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{AddExtensionLayer, Json, Router};
 use chrono::{Duration, NaiveDate, NaiveDateTime, Utc};
 use log::{debug, error, info};
@@ -17,9 +17,11 @@ use serde::Serialize;
 use serde_json::json;
 use sqlx::types::BigDecimal;
 
-use crate::api::v1::{v1_scheduled_scrapes, v1_scrape_history};
+use crate::api::v1::providers::v1_add_provider;
+use crate::api::v1::{v1_provider_stats, v1_scheduled_scrapes, v1_scrape_history};
 use crate::api::{AppError, Context};
 use crate::db::{latest_requests, Database};
+use crate::scraper::ProviderMap;
 
 struct ScheduledProvider {
     id: i32,
@@ -103,15 +105,18 @@ async fn scheduled_scrapes(
     Ok(Json(out))
 }
 
-pub async fn run_server(db: Arc<Database>, port: u16) {
+pub async fn run_server(db: Arc<Database>, provider_map: Arc<ProviderMap>, port: u16) {
     info!("Starting server");
     let ctx = Arc::new(Context {
         db: Arc::clone(&db),
+        providers: provider_map,
     });
     let router = Router::new()
         .route("/schedule", get(scheduled_scrapes))
         .route("/v1/schedule", get(v1_scheduled_scrapes))
         .route("/v1/history", get(v1_scrape_history))
+        .route("/v1/provider", post(v1_add_provider))
+        .route("/v1/stats", get(v1_provider_stats))
         .layer(AddExtensionLayer::new(ctx));
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     axum::Server::bind(&addr)

@@ -45,6 +45,7 @@ struct PreviousScrapeRow {
     priority: BigDecimal,
     default_name: Option<String>,
     official: bool,
+    discovered_media: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -61,6 +62,7 @@ pub struct PreviousScrape {
     priority: f32,
     default_name: Option<String>,
     official: bool,
+    discovered_media: i64,
 }
 
 #[derive(Serialize)]
@@ -141,7 +143,12 @@ pub async fn v1_scrape_history(
             pr.name,
             pr.destination,
             scrape.priority,
-            scrape.scraped_at as date
+            scrape.scraped_at as date,
+            COALESCE((SELECT COUNT(*)
+            from media
+                     inner join public.scrape_request sr on sr.id = media.scrape_request_id
+                     inner join scrape s on s.id = sr.scrape_id
+               where sr.scrape_id = scrape.id), 0) as discovered_media
         FROM scrape
                  INNER JOIN provider_resource pr on pr.destination = scrape.provider_destination
             and scrape.provider_name = pr.name
@@ -159,6 +166,9 @@ pub async fn v1_scrape_history(
             url: row.url,
             date: row.date,
             destination: row.destination,
+            // we shouldn't need this, but sqlx doesn't understand the semantics
+            // of COALESCE for some reason
+            discovered_media: row.discovered_media.unwrap_or(0),
             priority: row.priority.to_f32().unwrap(),
             default_name: row.default_name,
             official: row.official,
@@ -166,6 +176,91 @@ pub async fn v1_scrape_history(
         .collect::<Vec<_>>();
     Ok(Json(history))
 }
+
+#[derive(Serialize)]
+pub struct ProviderStat {
+    name: String,
+    destination: String,
+    enabled: bool,
+    url: String,
+    priority: f32,
+    tokens: f32,
+    // TODO: why is this nullable?
+    created_at: Option<NaiveDateTime>,
+    default_name: Option<String>,
+    official: bool,
+    last_scrape: Option<NaiveDateTime>,
+    last_post: Option<NaiveDateTime>,
+    discovered_images: i64,
+    scrape_count: i64,
+}
+
+#[derive(Serialize)]
+pub struct ProviderStatsResponse {
+    history: Vec<ProviderStat>,
+}
+
+pub async fn v1_provider_stats(
+    Extension(state): Extension<Arc<Context>>,
+) -> Result<Json<ProviderStatsResponse>, AppError> {
+    let stats = sqlx::query!(
+        "SELECT pr.id,
+       pr.name,
+       pr.destination,
+       pr.enabled,
+       pr.url,
+       pr.priority,
+       pr.tokens,
+       pr.created_at,
+       pr.default_name,
+       pr.official,
+       (SELECT Max(sr.scraped_at)
+        FROM scrape_request sr
+                 inner join scrape s on pr.destination = s.provider_destination) as last_scrape,
+       (SELECT MAX(posted_at)
+        FROM media
+                 INNER JOIN public.scrape_request s on s.id = media.scrape_request_id
+                 inner join scrape s2 on s2.id = s.scrape_id
+        where s2.provider_destination = pr.destination
+          and s2.provider_name = pr.name
+       ) as last_post,
+       (SELECT COUNT(*)
+        from media
+                 inner join public.scrape_request r on r.id = media.scrape_request_id
+                 inner join scrape s3 on s3.id = r.scrape_id
+        where s3.provider_name = pr.name
+          and s3.provider_destination = pr.destination
+       ) as discovered_images,
+       (SELECT COUNT(*) from scrape inner join scrape_request sr2 on scrape.id = sr2.scrape_id
+          where scrape.provider_destination = pr.destination and scrape.provider_name = pr.name
+       ) as scrape_count
+    FROM provider_resource pr;"
+    )
+    .fetch_all(&*state.db)
+    .await?;
+    let data = ProviderStatsResponse {
+        history: stats
+            .iter()
+            .map(|stat| ProviderStat {
+                name: stat.name.clone(),
+                destination: stat.destination.clone(),
+                enabled: stat.enabled.unwrap_or(false),
+                url: stat.url.clone(),
+                priority: stat.priority.to_f32().unwrap_or(0f32),
+                tokens: stat.tokens.to_f32().unwrap_or(0f32),
+                created_at: stat.created_at,
+                default_name: stat.default_name.clone(),
+                official: stat.official,
+                last_scrape: stat.last_scrape,
+                last_post: stat.last_post,
+                discovered_images: stat.discovered_images.unwrap_or(0),
+                scrape_count: stat.scrape_count.unwrap_or(0),
+            })
+            .collect::<Vec<_>>(),
+    };
+    Ok(Json(data))
+}
+
 // (SELECT Max(scraped_at) FROM scrape_request sr where sr.scrape_id = scrape.id) as last_scrape,
 // (SELECT MAX(posted_at) FROM media
 // INNER JOIN public.scrape_request s on s.id = media.scrape_request_id

@@ -1,6 +1,7 @@
+use std::env;
 use std::iter::FromIterator;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use chrono::NaiveDateTime;
@@ -10,11 +11,12 @@ use log::error;
 use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::Client;
+use url::Url;
 
 use crate::request::{parse_successful_response, HttpError};
 use crate::scheduler::UnscopedLimiter;
 use crate::scraper::providers::twitter_types::{
-    Entries, Twitter, TwitterImageMetadata, TwitterPostMetadata, Type,
+    Entries, Twitter, TwitterImageMetadata, TwitterPostMetadata, TwitterUserLookupResponse, Type,
 };
 
 use super::*;
@@ -37,6 +39,7 @@ fn parse_twitter_date(date_str: &str) -> ParseResult<DateTime<FixedOffset>> {
 
 pub struct TwitterTimeline {
     pub guest_token: SharedCredentials<ProviderCredentials>,
+    pub bearer_token: Option<String>,
     pub client: Arc<Client>,
     pub rate_limiter: UnscopedLimiter,
 }
@@ -73,6 +76,7 @@ impl Provider for TwitterTimeline {
     {
         Self {
             guest_token: create_credentials(),
+            bearer_token: env::var("TWITTER_BEARER_TOKEN").ok(),
             client: Arc::clone(&input.client),
             rate_limiter: Self::rate_limiter(),
         }
@@ -269,6 +273,39 @@ impl Provider for TwitterTimeline {
         }
     }
 
+    fn match_domain(&self, url: &str) -> Option<WorkableDomain> {
+        find_matching_domain(&["twitter.com"], url)
+    }
+
+    /// https://twitter.com/:username -> ID
+    async fn introspect_resource(
+        &self,
+        introspectable: &IntrospectableResource,
+    ) -> Result<CanonicalUrlResolution, ProviderFailure> {
+        let bearer = match &self.bearer_token {
+            None => return Ok(CanonicalUrlResolution::NotImplemented),
+            Some(token) => token,
+        };
+        let input = match Url::parse(&introspectable.0) {
+            Err(e) => return Err(ProviderFailure::Url),
+            Ok(e) => e,
+        };
+        let username = input.path().trim_start_matches("/");
+        // self.guest_token
+        let endpoint = format!("https://api.twitter.com/2/users/by/username/{}", username);
+        let result = self
+            .client
+            .get(endpoint)
+            .header("Authorization", format!("Bearer {}", bearer))
+            .send()
+            .await?
+            .json::<TwitterUserLookupResponse>()
+            .await?;
+        Ok(CanonicalUrlResolution::Success {
+            destination: result.data.id,
+        })
+    }
+
     async fn login(&self) -> anyhow::Result<ProviderCredentials> {
         let login = self
             .client
@@ -281,7 +318,7 @@ impl Provider for TwitterTimeline {
             .await?;
         let html = login.text().await?;
         let regex = Regex::new(r#"gt=(.*?);"#).unwrap();
-        let captures = regex.captures(&html).unwrap();
+        let captures = regex.captures(&html).expect(&format!("{:?}", &html));
         let capture = captures
             .get(1)
             .expect("Couldn't match a guest token in the twitter homepage, the site was changed");
@@ -309,16 +346,3 @@ impl Provider for TwitterTimeline {
         }
     }
 }
-
-// Example code that deserializes and serializes the model.
-// extern crate serde;
-// #[macro_use]
-// extern crate serde_derive;
-// extern crate serde_json;
-//
-// use generated_module::[object Object];
-//
-// fn main() {
-//     let json = r#"{"answer": 42}"#;
-//     let model: [object Object] = serde_json::from_str(&json).unwrap();
-// }

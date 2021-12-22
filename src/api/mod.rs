@@ -6,11 +6,13 @@ use axum::Json;
 use serde_json::json;
 use std::convert::Infallible;
 use std::sync::Arc;
+use crate::scraper::ProviderMap;
 
 pub mod v1;
 
 pub struct Context {
     pub db: Arc<Database>,
+    pub providers: Arc<ProviderMap>
 }
 
 pub enum AppError {

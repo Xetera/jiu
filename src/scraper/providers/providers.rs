@@ -1,3 +1,4 @@
+use std::convert::Infallible;
 use std::sync::Arc;
 use std::{collections::HashSet, ops::Add, time::Duration};
 
@@ -6,15 +7,17 @@ use chrono::NaiveDateTime;
 use governor::{Jitter, Quota, RateLimiter};
 use log::{debug, error, info};
 use parking_lot::RwLock;
-use reqwest::{Client, StatusCode};
+use reqwest::{Client, Error, StatusCode};
 use serde;
 use serde::{Deserialize, Serialize};
-use strum_macros;
+use strum_macros::{Display, ToString};
 use strum_macros::{EnumIter, EnumString};
 use thiserror::Error;
+use url::Url;
 
 use crate::request::HttpError;
 use crate::scheduler::UnscopedLimiter;
+use crate::scraper::providers::providers::DerivedProviderResource::Invalid;
 
 use super::{PageSize, ScrapeUrl};
 
@@ -135,8 +138,8 @@ impl From<HttpError> for ProviderFailure {
 }
 
 pub enum CanonicalUrlResolution {
-    Success(String),
-    Fail,
+    Success { destination: String },
+    Fail(String),
     NotImplemented,
 }
 
@@ -245,6 +248,21 @@ pub async fn attempt_first_login(
     *writable = Some(provider_creds);
 }
 
+pub enum DerivedProviderResource {
+    Invalid,
+    Error { reason: String },
+    Success { destination: String },
+}
+
+pub struct IntrospectableResource(pub String);
+
+pub enum WorkableDomain {
+    /// The url can be turned into a canonical URL using [`Provider::introspect_resource`]
+    ToCanonical(IntrospectableResource),
+    /// The url can be scraped for information
+    ToResource(Url),
+}
+
 /// Providers represent a generic endpoint on a single platform that can be scraped
 /// with a unique identifier for each specific resource
 #[async_trait]
@@ -283,12 +301,21 @@ pub trait Provider: Sync + Send + RateLimitable {
         Duration::from_secs(2)
     }
 
+    /// Match the domain input into a pending action the provider can perform
+    fn match_domain(&self, _url: &str) -> Option<WorkableDomain> {
+        None
+    }
+
     /// Attempt to resolve the data required to construct a scrape destination given a canonical URL
     /// # Example
-    /// Canonical URL: https://weverse.io/dreamcatcher/artist
-    /// Result:        Success("14")
-    async fn canonical_url_to_id(&self, _url: &str) -> CanonicalUrlResolution {
-        CanonicalUrlResolution::NotImplemented
+    /// introspectable: dreamcatcher
+    /// Canonical URL:  https://weverse.io/dreamcatcher/artist
+    /// Result:         Ok("14")
+    async fn introspect_resource(
+        &self,
+        _introspectable: &IntrospectableResource,
+    ) -> Result<CanonicalUrlResolution, ProviderFailure> {
+        Ok(CanonicalUrlResolution::NotImplemented)
     }
 
     /// Provider destination are any unique identifier a provider can try to resolve into an opaque [ScrapeUrl].
@@ -341,9 +368,7 @@ pub trait Provider: Sync + Send + RateLimitable {
     }
 }
 
-#[derive(
-    Debug, Hash, Copy, Clone, Serialize, EnumString, EnumIter, strum_macros::ToString, PartialEq, Eq,
-)]
+#[derive(Display, Debug, Hash, Copy, Clone, Serialize, EnumString, EnumIter, PartialEq, Eq)]
 pub enum AllProviders {
     #[strum(serialize = "pinterest.board_feed")]
     PinterestBoardFeed,
@@ -353,6 +378,18 @@ pub enum AllProviders {
     UnitedCubeArtistFeed,
     #[strum(serialize = "twitter.timeline")]
     TwitterTimeline,
+}
+
+pub fn find_matching_domain(domains: &[&str], url: &str) -> Option<WorkableDomain> {
+    let parsed = Url::parse(url).ok()?;
+    let dom = parsed.domain()?;
+    if domains.contains(&dom) {
+        Some(WorkableDomain::ToCanonical(IntrospectableResource(
+            url.to_owned(),
+        )))
+    } else {
+        None
+    }
 }
 
 pub struct UrlBuilder {
