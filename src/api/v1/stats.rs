@@ -197,7 +197,7 @@ pub struct ProviderStat {
 
 #[derive(Serialize)]
 pub struct ProviderStatsResponse {
-    history: Vec<ProviderStat>,
+    stats: Vec<ProviderStat>,
 }
 
 pub async fn v1_provider_stats(
@@ -239,7 +239,7 @@ pub async fn v1_provider_stats(
     .fetch_all(&*state.db)
     .await?;
     let data = ProviderStatsResponse {
-        history: stats
+        stats: stats
             .iter()
             .map(|stat| ProviderStat {
                 name: stat.name.clone(),
