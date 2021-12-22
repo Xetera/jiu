@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::env;
 use std::fmt::Display;
 use std::iter::FromIterator;
 use std::sync::Arc;
@@ -55,7 +56,12 @@ pub async fn get_provider_map(client: &Arc<Client>) -> anyhow::Result<ProviderMa
             AllProviders::UnitedCubeArtistFeed => Box::new(UnitedCubeArtistFeed::new(input)),
             AllProviders::TwitterTimeline => Box::new(TwitterTimeline::new(input)),
         };
-        provider.initialize().await;
+        // we should only initialize providers if NO_WORKER is not set
+        // this is not typesafe so we should be careful to not try to do
+        // authenticated requests when workers are off
+        if let Err(_) = env::var("NO_WORKER") {
+            provider.initialize().await;
+        }
         (provider_type, provider)
     });
     let results = join_all(handles).await;

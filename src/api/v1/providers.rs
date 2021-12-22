@@ -20,10 +20,19 @@ pub struct ProviderAdd {
 
 #[derive(Serialize)]
 pub enum ProviderAddResponse {
-    InvalidUrl { url: String },
+    InvalidUrl {
+        url: String,
+    },
+    ProviderExists {
+        provider: String,
+        destination: String,
+    },
     InternalError,
     NotImplemented,
-    Success { destination: String },
+    Success {
+        provider: String,
+        destination: String,
+    },
 }
 
 pub async fn v1_add_provider(
@@ -75,21 +84,30 @@ pub async fn v1_add_provider(
         provider.id()
     );
     let provider_name = provider.id().to_string();
-    let db_result = sqlx::query!(
+    if let Err(sqlx::Error::Database(err)) = sqlx::query!(
         "INSERT INTO provider_resource (destination, name, default_name, official, url) VALUES
-            ($1, $2, $3, $4, $5)
-            ON CONFLICT(destination, name) DO UPDATE SET enabled = True",
+            ($1, $2, $3, $4, $5)",
         destination,
         provider_name,
         input.name,
         input.official,
         input.url
     )
-    .fetch_one(&*state.db)
-    .await?;
+    .execute(&*state.db)
+    .await
+    {
+        // the most disgusting way of checking for primary key conflicts
+        if err.code().map(|code| code == "23505").unwrap_or(false) {
+            return Ok(Json(ProviderAddResponse::ProviderExists {
+                destination,
+                provider: provider_name,
+            }));
+        }
+    };
+    // there's a conflict
     // TODO: decouple this kiyomi-specific thing out?
     if input.add_to_amqp.unwrap_or(false) {
-        let source = sqlx::query!(
+        sqlx::query!(
             "INSERT INTO amqp_source (provider_name, provider_destination, metadata)
                 VALUES ($1, $2, $3)
                 ON CONFLICT(provider_name, provider_destination) DO UPDATE SET metadata = $3",
@@ -97,10 +115,13 @@ pub async fn v1_add_provider(
             destination,
             input.metadata.unwrap_or(Value::Object(Map::new()))
         )
-        .fetch_one(&*state.db)
+        .fetch_optional(&*state.db)
         .await?;
     }
-    Ok(Json(ProviderAddResponse::Success { destination }))
+    Ok(Json(ProviderAddResponse::Success {
+        destination,
+        provider: provider_name,
+    }))
 }
 
 #[derive(Deserialize)]

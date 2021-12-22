@@ -1,21 +1,5 @@
 {
   "db": "PostgreSQL",
-  "1354990df0cf8773bbb2c27879e75e20c244908b84ddafc42ba0c2be3daa81a1": {
-    "query": "INSERT INTO provider_resource (destination, name, default_name, official, url) VALUES\n            ($1, $2, $3, $4, $5)\n            ON CONFLICT(destination, name) DO UPDATE SET enabled = True",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Left": [
-          "Text",
-          "Text",
-          "Text",
-          "Bool",
-          "Text"
-        ]
-      },
-      "nullable": []
-    }
-  },
   "299433bbcf3b5df1fdf1e96cc0bf6c0128ee763636444ada07875180c9533c8b": {
     "query": "SELECT sr.scrape_id, scrape_request_id, page_url, image_url\n        FROM media m\n        join scrape_request sr\n            on sr.id = m.scrape_request_id\n        join scrape s\n            on s.id = sr.scrape_id\n        where s.id = ANY($1)",
     "describe": {
@@ -97,6 +81,22 @@
         false,
         true
       ]
+    }
+  },
+  "421e4e4f841607d4c6321bcc67285bcbe7a47d661806219e3ed86e4eb72f4375": {
+    "query": "INSERT INTO provider_resource (destination, name, default_name, official, url) VALUES\n            ($1, $2, $3, $4, $5)",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text",
+          "Text",
+          "Bool",
+          "Text"
+        ]
+      },
+      "nullable": []
     }
   },
   "49b92dc58bba0e5bcfe072c2bff3478f2145be6f1a691ce8775db65a98080a69": {
