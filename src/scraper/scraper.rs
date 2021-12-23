@@ -231,7 +231,8 @@ pub async fn scrape<'a>(
                 let pagination_limit = provider.max_pagination();
                 // only looking at pagination limit if there's at least one image
                 // that's been scraped in the past
-                if total_found_images > 1 && scrape_requests.len() as u16 > pagination_limit {
+                if !input.latest_data.is_empty() && scrape_requests.len() as u16 > pagination_limit
+                {
                     info!(
                         "[{}] has reached its pagination limit of {}",
                         sp, pagination_limit
