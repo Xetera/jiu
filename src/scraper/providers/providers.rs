@@ -203,8 +203,10 @@ pub fn default_quota() -> Quota {
     Quota::with_period(Duration::from_millis(3500u64)).unwrap()
 }
 
+const DEFAULT_WAIT_SECONDS: u64 = if cfg!(debug_assertions) { 2 } else { 8 };
+
 pub fn default_jitter() -> Jitter {
-    Jitter::up_to(Duration::from_secs(2))
+    Jitter::up_to(Duration::from_secs(DEFAULT_WAIT_SECONDS))
 }
 
 #[derive(Debug, Clone, Default)]

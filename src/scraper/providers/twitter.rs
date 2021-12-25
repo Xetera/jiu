@@ -3,11 +3,12 @@ use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use anyhow::Error;
 use async_trait::async_trait;
 use chrono::NaiveDateTime;
 use chrono::{DateTime, FixedOffset, ParseResult};
 use governor::Quota;
-use log::error;
+use log::{debug, error, info, trace};
 use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::Client;
@@ -16,7 +17,8 @@ use url::Url;
 use crate::request::{parse_successful_response, HttpError};
 use crate::scheduler::UnscopedLimiter;
 use crate::scraper::providers::twitter_types::{
-    Entries, Twitter, TwitterImageMetadata, TwitterPostMetadata, TwitterUserLookupResponse, Type,
+    Entries, GuestTokenFetchResponse, Twitter, TwitterImageMetadata, TwitterPostMetadata,
+    TwitterUserLookupResponse, Type,
 };
 
 use super::*;
@@ -196,7 +198,7 @@ impl Provider for TwitterTimeline {
                 // the chances of this being undefined is basically non-existent but we should be safe
                 let tweet = match tweet_db.get(sort_index) {
                     None => {
-                        error!(
+                        debug!(
                             "Could not find the corresponding tweet id for {} in the tweet db",
                             sort_index
                         );
@@ -307,25 +309,59 @@ impl Provider for TwitterTimeline {
     }
 
     async fn login(&self) -> anyhow::Result<ProviderCredentials> {
+        let headers = HeaderMap::from_iter([(
+            HeaderName::from_static("user-agent"),
+            HeaderValue::from_static(USER_AGENT),
+        )]);
         let login = self
             .client
             .get(BASE_URL)
-            .headers(HeaderMap::from_iter([(
-                HeaderName::from_static("user-agent"),
-                HeaderValue::from_static(USER_AGENT),
-            )]))
+            .headers(headers.clone())
             .send()
             .await?;
         let html = login.text().await?;
+        // TODO: check cookie response here?
+        // CONTEXT: https://github.com/JustAnotherArchivist/snscrape/blob/eee06d859338b184fc43f93e424ba70a0e9f4679/snscrape/modules/twitter.py#L231
         let regex = Regex::new(r#"gt=(.*?);"#).unwrap();
-        let captures = regex.captures(&html).expect(&format!("{:?}", &html));
-        let capture = captures
-            .get(1)
-            .expect("Couldn't match a guest token in the twitter homepage, the site was changed");
-        Ok(ProviderCredentials {
-            access_token: capture.as_str().to_owned(),
-            refresh_token: "".to_owned(),
-        })
+        match regex.captures(&html) {
+            Some(captures) => {
+                let capture = captures.get(1).expect(
+                    "Couldn't match a guest token in the twitter homepage, the site was changed",
+                );
+                Ok(ProviderCredentials {
+                    access_token: capture.as_str().to_owned(),
+                    refresh_token: "".to_owned(),
+                })
+            }
+            None => {
+                info!(
+                    "Couldn't find a guest token in the homepage, attempting to fetch from the API"
+                );
+                let bearer = self
+                    .bearer_token
+                    .clone()
+                    .unwrap_or(MAGIC_BEARER_TOKEN.to_owned());
+                let mut request_headers = headers.clone();
+                request_headers.append(
+                    HeaderName::from_static("Authorization"),
+                    HeaderValue::from_str(&format!("Bearer {}", bearer))
+                        .expect("Header value for authorization request could not be formatted"),
+                );
+                let result = self
+                    .client
+                    .post("https://api.twitter.com/1.1/guest/activate.json")
+                    .headers(request_headers)
+                    .send()
+                    .await?
+                    .json::<GuestTokenFetchResponse>()
+                    .await?;
+                let creds = ProviderCredentials {
+                    access_token: result.guest_token,
+                    refresh_token: "".to_owned(),
+                };
+                Ok(creds)
+            }
+        }
     }
 
     fn on_error(&self, error: &HttpError) -> anyhow::Result<ProviderErrorHandle> {

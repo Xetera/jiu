@@ -14,13 +14,18 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Deserialize)]
+pub struct GuestTokenFetchResponse {
+    pub(crate) guest_token: String,
+}
+
+#[derive(Deserialize)]
 pub struct TwitterUserLookup {
-    pub id: String
+    pub(crate) id: String,
 }
 
 #[derive(Deserialize)]
 pub struct TwitterUserLookupResponse {
-    pub data: TwitterUserLookup
+    pub(crate) data: TwitterUserLookup,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
