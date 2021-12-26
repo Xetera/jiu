@@ -305,7 +305,7 @@ impl Provider for UnitedCubeArtistFeed {
         self.credentials.clone()
     }
 
-    async fn login(&self) -> anyhow::Result<ProviderCredentials> {
+    async fn login(&self) -> Result<ProviderCredentials, ProviderFailure> {
         let response = self
             .client
             .post("https://united-cube.com/v1/auth/login")

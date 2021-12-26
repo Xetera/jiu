@@ -308,7 +308,7 @@ impl Provider for TwitterTimeline {
         })
     }
 
-    async fn login(&self) -> anyhow::Result<ProviderCredentials> {
+    async fn login(&self) -> Result<ProviderCredentials, ProviderFailure> {
         let headers = HeaderMap::from_iter([(
             HeaderName::from_static("user-agent"),
             HeaderValue::from_static(USER_AGENT),

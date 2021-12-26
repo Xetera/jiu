@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::{env, iter::FromIterator, sync::Arc, time::Instant};
 
 use async_trait::async_trait;
@@ -22,7 +23,7 @@ use crate::{
 use super::*;
 
 /// https://gist.github.com/Xetera/aa59e84f3959a37c16a3309b5d9ab5a0
-async fn get_public_key(client: &Client) -> anyhow::Result<RSAPublicKey> {
+async fn get_public_key(client: &Client) -> Result<RSAPublicKey, ProviderFailure> {
     let login_page = client
         .post("https://account.weverse.io/login/auth?client_id=weverse-test&hl=en")
         .send()
@@ -63,10 +64,16 @@ async fn get_public_key(client: &Client) -> anyhow::Result<RSAPublicKey> {
     Ok(public_key)
 }
 
-fn encrypted_password(password: String, public_key: RSAPublicKey) -> anyhow::Result<String> {
+fn encrypted_password(
+    password: String,
+    public_key: RSAPublicKey,
+) -> Result<String, ProviderFailure> {
     let mut rng = OsRng;
     let padding = PaddingScheme::new_oaep::<Sha1>();
-    let encrypted = public_key.encrypt(&mut rng, padding, password.as_bytes())?;
+    let encrypted = match public_key.encrypt(&mut rng, padding, password.as_bytes()) {
+        Err(error) => return Err(ProviderFailure::Other(error.to_string())),
+        Ok(ok) => ok,
+    };
     Ok(base64::encode(encrypted))
 }
 
@@ -88,7 +95,7 @@ async fn get_access_token(
     email: String,
     encrypted_password: String,
     client: &Client,
-) -> anyhow::Result<WeverseAuthorizeResponse> {
+) -> Result<WeverseAuthorizeResponse, ProviderFailure> {
     Ok(client
         .post("https://accountapi.weverse.io/api/v1/oauth/token")
         .json(&WeverseAuthorizeInput::Login {
@@ -105,7 +112,7 @@ async fn get_access_token(
 
 pub async fn fetch_weverse_auth_token(
     client: &Client,
-) -> anyhow::Result<Option<ProviderCredentials>> {
+) -> Result<Option<ProviderCredentials>, ProviderFailure> {
     match (
         env::var("WEVERSE_ACCESS_TOKEN"),
         env::var("WEVERSE_EMAIL"),
@@ -449,7 +456,7 @@ impl Provider for WeverseArtistFeed {
         };
         Ok(CredentialRefresh::Result(credentials_result))
     }
-    async fn login(&self) -> anyhow::Result<ProviderCredentials> {
+    async fn login(&self) -> Result<ProviderCredentials, ProviderFailure> {
         let credentials = fetch_weverse_auth_token(&self.client)
             .await?
             .expect("Tried to authorize weverse module but the login credentials were not found");

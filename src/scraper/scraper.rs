@@ -72,20 +72,27 @@ async fn request_page<'a>(
         debug!("Exiting scrape due to an error {:?}", error);
         (InternalScraperStep::Error(error), None)
     };
+    let write_credentials_and_continue = |creds: ProviderCredentials| {
+        write_provider_credentials(provider, creds);
+        request_page(sp, provider, state, input)
+    };
     match provider.unfold(state.to_owned()).await {
         // we have to indicate an error to the consumer and stop iteration on the next cycle
         Err(error) => match &error {
             ProviderFailure::HttpError(http_error) => match provider.on_error(http_error) {
                 Ok(ProviderErrorHandle::Halt) => error_step(error),
+                Ok(ProviderErrorHandle::Login) => {
+                    debug!("Triggering login flow for {}", provider.id().to_string());
+                    match provider.login().await {
+                        Ok(credentials) => write_credentials_and_continue(credentials).await,
+                        Err(error) => error_step(error),
+                    }
+                }
                 Ok(ProviderErrorHandle::RefreshToken(credentials)) => {
                     debug!(
                         "Triggering token refresh flow for {}",
                         provider.id().to_string()
                     );
-                    let write_credentials_and_continue = |creds: ProviderCredentials| {
-                        write_provider_credentials(provider, creds);
-                        request_page(sp, provider, state, input)
-                    };
                     match provider.token_refresh(&credentials).await {
                         Ok(CredentialRefresh::Result(credentials)) => {
                             write_credentials_and_continue(credentials).await

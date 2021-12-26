@@ -351,7 +351,7 @@ pub trait Provider: Sync + Send + RateLimitable {
         )
     }
 
-    async fn login(&self) -> anyhow::Result<ProviderCredentials> {
+    async fn login(&self) -> Result<ProviderCredentials, ProviderFailure> {
         panic!(
             "{} tried to login but it doesn't implement a login flow",
             self.id().to_string()
