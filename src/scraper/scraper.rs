@@ -68,7 +68,10 @@ async fn request_page<'a>(
     input: &ScrapeRequestInput,
 ) -> (InternalScraperStep, Option<ProviderState>) {
     let iteration = state.iteration;
-    let error_step = |error| (InternalScraperStep::Error(error), None);
+    let error_step = |error| {
+        debug!("Exiting scrape due to an error {:?}", error);
+        (InternalScraperStep::Error(error), None)
+    };
     match provider.unfold(state.to_owned()).await {
         // we have to indicate an error to the consumer and stop iteration on the next cycle
         Err(error) => match &error {
