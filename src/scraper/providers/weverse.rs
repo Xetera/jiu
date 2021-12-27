@@ -216,7 +216,7 @@ struct WeverseTokenRefreshInput {}
 #[serde(rename_all = "camelCase")]
 pub struct WeversePage {
     is_ended: bool,
-    last_id: u64,
+    last_id: Option<u64>,
     posts: Vec<WeversePost>,
 }
 
@@ -398,7 +398,8 @@ impl Provider for WeverseArtistFeed {
                 }
             })
             .collect::<Vec<_>>();
-        let has_more = !response_json.is_ended;
+        // weverse omits last_id when at the end of the content
+        let has_more = !response_json.is_ended || response_json.last_id.is_some();
         let result = ProviderResult {
             posts,
             response_code,
@@ -407,7 +408,7 @@ impl Provider for WeverseArtistFeed {
         if has_more {
             return Ok(ProviderStep::Next(
                 result,
-                Pagination::NextCursor(response_json.last_id.to_string()),
+                Pagination::NextCursor(response_json.last_id.unwrap().to_string()),
             ));
         }
         Ok(ProviderStep::End(result))
