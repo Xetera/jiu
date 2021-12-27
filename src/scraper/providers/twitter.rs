@@ -343,7 +343,7 @@ impl Provider for TwitterTimeline {
                     .unwrap_or(MAGIC_BEARER_TOKEN.to_owned());
                 let mut request_headers = headers.clone();
                 request_headers.append(
-                    HeaderName::from_static("Authorization"),
+                    HeaderName::from_static("authorization"),
                     HeaderValue::from_str(&format!("Bearer {}", bearer))
                         .expect("Header value for authorization request could not be formatted"),
                 );
