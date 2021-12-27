@@ -381,4 +381,7 @@ impl Provider for TwitterTimeline {
             }
         }
     }
+    fn credentials(&self) -> SharedCredentials<ProviderCredentials> {
+        self.guest_token.clone()
+    }
 }
