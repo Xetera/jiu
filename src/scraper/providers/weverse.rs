@@ -31,11 +31,18 @@ async fn get_public_key(client: &Client) -> Result<RSAPublicKey, ProviderFailure
         .text()
         .await?;
     let regex = Regex::new(r"/(static/js/main\..*.js)").unwrap();
-    let js_bundle_captures = regex.captures(&login_page).unwrap();
+    let js_bundle_captures = regex.captures(&login_page).ok_or(
+        ProviderFailure::Other(
+            "Could not find a bundle matching the regex '/(static/js/main\\..*.js)' in the weverse login page".to_owned()
+        )
+    )?;
 
     let js_name = js_bundle_captures
         .get(1)
-        .expect("Couldn't match a main js bundle on account.weverse.io, the site was changed")
+        .ok_or(ProviderFailure::Other(
+            "Couldn't match a main js bundle on account.weverse.io, the site was changed"
+                .to_owned(),
+        ))?
         .as_str();
     let js_bundle_url = format!("https://account.weverse.io/{}", js_name);
     let js_bundle = client.get(&js_bundle_url).send().await?.text().await?;
@@ -43,10 +50,10 @@ async fn get_public_key(client: &Client) -> Result<RSAPublicKey, ProviderFailure
         Regex::new(r"(-----BEGIN RSA PUBLIC KEY-----(.|\n)+----END RSA PUBLIC KEY-----)")
             .unwrap()
             .captures(&js_bundle)
-            .expect(&format!(
-                "Couldn't find a hardcoded RSA key in {}",
+            .ok_or(ProviderFailure::Other(format!(
+                "Could not find RSA key in {}",
                 &js_bundle_url
-            ));
+            )))?;
 
     let rsa_key = rsa_captures.get(1).unwrap().as_str().to_owned();
 
