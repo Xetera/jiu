@@ -224,7 +224,7 @@ pub async fn v1_provider_stats(
         where s2.provider_destination = pr.destination
           and s2.provider_name = pr.name
        ) as last_post,
-       (SELECT COUNT(*)
+       (SELECT COUNT(s3.*)
         from media
                  inner join public.scrape_request r on r.id = media.scrape_request_id
                  inner join scrape s3 on s3.id = r.scrape_id
