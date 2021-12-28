@@ -3,7 +3,7 @@ use std::time::Duration;
 use std::{collections::HashSet, convert::TryInto, hash::Hash, iter::FromIterator, str::FromStr};
 
 use itertools::{unfold, Itertools};
-use log::info;
+use log::{debug, info};
 use num_traits::cast::ToPrimitive;
 use rand::Rng;
 
@@ -214,6 +214,13 @@ pub async fn update_priorities(db: &Database, sp: &[PendingProvider]) -> anyhow:
         if !histories.is_empty() {
             let provider_priority = Priority::unchecked_clamp(priority.to_f32().unwrap());
             let next_priority = provider_priority.next(&histories[..]);
+            debug!(
+                "Setting the next priority for [{}] from {} to {} because {:?}",
+                &name,
+                provider_priority.level.to_f32().unwrap_or(-1.0),
+                next_priority.level.to_f32().unwrap_or(-1.0),
+                &histories.iter().map(|h| h.result_count)
+            );
             // continue;
             sqlx::query!(
                 "UPDATE provider_resource SET priority = $1 where id = $2
