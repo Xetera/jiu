@@ -148,10 +148,15 @@ impl Provider for TwitterTimeline {
             Some(token) => token,
             None => return Ok(ProviderStep::NotInitialized),
         };
-        let bearer = self.bearer_token.clone().unwrap_or_else(|| {
-            warn!("Using fallback bearer token. This will most likely get rate limited and fail");
-            MAGIC_BEARER_TOKEN.to_owned()
-        });
+        let bearer = self.bearer_token.clone().map_or_else(
+            || {
+                warn!(
+                    "Using fallback bearer token. This will most likely get rate limited and fail"
+                );
+                MAGIC_BEARER_TOKEN.to_owned()
+            },
+            |token| format!("Bearer {}", &token),
+        );
         let instant = Instant::now();
 
         let response = self
