@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::env;
 use std::iter::FromIterator;
 use std::sync::Arc;
@@ -8,7 +9,7 @@ use async_trait::async_trait;
 use chrono::NaiveDateTime;
 use chrono::{DateTime, FixedOffset, ParseResult};
 use governor::Quota;
-use log::{debug, error, info, trace};
+use log::{debug, error, info, trace, warn};
 use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::Client;
@@ -147,7 +148,12 @@ impl Provider for TwitterTimeline {
             Some(token) => token,
             None => return Ok(ProviderStep::NotInitialized),
         };
+        let bearer = self.bearer_token.clone().unwrap_or_else(|| {
+            warn!("Using fallback bearer token. This will most likely get rate limited and fail");
+            MAGIC_BEARER_TOKEN.to_owned()
+        });
         let instant = Instant::now();
+
         let response = self
             .client
             .get(state.url.0)
@@ -159,11 +165,12 @@ impl Provider for TwitterTimeline {
                 ),
                 (
                     HeaderName::from_static("authorization"),
-                    HeaderValue::from_static(MAGIC_BEARER_TOKEN),
+                    HeaderValue::from_str(&bearer).expect("Invalid bearer token format"),
                 ),
                 (
                     HeaderName::from_static("x-guest-token"),
-                    HeaderValue::from_str(&token.access_token).unwrap(),
+                    HeaderValue::from_str(&token.access_token)
+                        .expect("Invalid access token format"),
                 ),
             ]))
             .send()
