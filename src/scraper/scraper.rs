@@ -3,12 +3,14 @@ use std::time::Instant;
 use async_recursion::async_recursion;
 use chrono::{NaiveDateTime, Utc};
 use futures::StreamExt;
-use log::{debug, info, trace};
+use log::{debug, error, info, trace};
+use crate::api::v1::ProviderStat;
 
 use crate::scraper::{
     providers::{CredentialRefresh, ProviderErrorHandle},
     ProviderPost,
 };
+use crate::scraper::scraper::ScraperErrorHandleDecision::{Continue, MaxLoginAttempts};
 
 use super::{
     providers::{Provider, ProviderFailure, ProviderState, ProviderStep, ScrapeRequestInput},
@@ -54,17 +56,31 @@ pub enum ScraperStep {
     Error(ProviderFailure),
 }
 
+enum ScraperErrorHandleDecision {
+    Continue,
+    MaxLoginAttempts(u32),
+}
+
 fn write_provider_credentials(provider: &dyn Provider, credentials: ProviderCredentials) {
     let creds = provider.credentials();
     let mut credential_ref = creds.write();
     *credential_ref = Some(credentials);
 }
 
+fn should_continue_requests(state: &ProviderState, provider: &dyn Provider) -> ScraperErrorHandleDecision {
+    let max_attempts = provider.max_login_attempts();
+    if state.login_attempts > max_attempts {
+        error!("Failed to login to {} after {} attempts. Giving up.", provider.id().to_string(), max_attempts);
+        return MaxLoginAttempts(max_attempts);
+    }
+    return Continue;
+}
+
 #[async_recursion]
 async fn request_page<'a>(
     sp: &'a ScopedProvider,
     provider: &dyn Provider,
-    state: &ProviderState,
+    state: ProviderState,
     input: &ScrapeRequestInput,
 ) -> (InternalScraperStep, Option<ProviderState>) {
     let iteration = state.iteration;
@@ -72,9 +88,14 @@ async fn request_page<'a>(
         debug!("Exiting scrape due to an error {:?}", error);
         (InternalScraperStep::Error(error), None)
     };
+    let give_up = (InternalScraperStep::Exit, None);
     let write_credentials_and_continue = |creds: ProviderCredentials| {
         write_provider_credentials(provider, creds);
-        request_page(sp, provider, state, input)
+        let new_state = ProviderState {
+            login_attempts: state.login_attempts + 1,
+            ..state.clone()
+        };
+        request_page(sp, provider, new_state, input)
     };
     match provider.unfold(state.to_owned()).await {
         // we have to indicate an error to the consumer and stop iteration on the next cycle
@@ -82,6 +103,10 @@ async fn request_page<'a>(
             ProviderFailure::HttpError(http_error) => match provider.on_error(http_error) {
                 Ok(ProviderErrorHandle::Halt) => error_step(error),
                 Ok(ProviderErrorHandle::Login) => {
+                    if let MaxLoginAttempts(count) = should_continue_requests(&state, provider) {
+                        error!("Too many login attempts ({}) for {}. Giving up", count, provider.id().to_string());
+                        return give_up;
+                    }
                     debug!("Triggering login flow for {}", provider.id().to_string());
                     match provider.login().await {
                         Ok(credentials) => write_credentials_and_continue(credentials).await,
@@ -89,6 +114,10 @@ async fn request_page<'a>(
                     }
                 }
                 Ok(ProviderErrorHandle::RefreshToken(credentials)) => {
+                    if let MaxLoginAttempts(count) = should_continue_requests(&state, provider) {
+                        error!("Too many login attempts ({}) for {}. Giving up", count, provider.id().to_string());
+                        return give_up;
+                    }
                     debug!(
                         "Triggering token refresh flow for {}",
                         provider.id().to_string()
@@ -150,6 +179,7 @@ async fn request_page<'a>(
                         url,
                         pagination: Some(pagination),
                         iteration: iteration + 1,
+                        ..state.clone()
                     };
                     (InternalScraperStep::Data(result), Some(next_state))
                 }
@@ -173,6 +203,7 @@ pub async fn scrape<'a>(
     let url = provider.from_provider_destination(&id, page_size.to_owned(), None)?;
 
     let seed = ProviderState {
+        login_attempts: 0,
         id: id.clone(),
         default_name: input.default_name.clone(),
         url,
@@ -183,9 +214,9 @@ pub async fn scrape<'a>(
     let mut steps = futures::stream::unfold(Some(seed), |maybe_state| async {
         let state = maybe_state?;
         info!("Scraping URL: {:?}", state.url.0);
-        Some(request_page(sp, provider, &state, input).await)
+        Some(request_page(sp, provider, state, input).await)
     })
-    .boxed();
+        .boxed();
 
     let mut scrape_requests: Vec<ScrapeRequest> = vec![];
     let scrape_start = Instant::now();
